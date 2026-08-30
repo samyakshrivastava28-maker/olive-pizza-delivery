@@ -6,6 +6,7 @@ import {
   onSnapshot, 
   type Unsubscribe, 
   getDocs,
+  getDoc,
   doc,
   setDoc,
   updateDoc
@@ -164,13 +165,26 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
           return;
         }
 
-        const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', firebaseUser.email))).catch(() => null);
+        // 1. Try reading user document directly by UID (Fast, Indexed, Rule-compliant)
         let userData: any = null;
-        if (userDoc && !userDoc.empty) {
-          userData = userDoc.docs[0].data();
+        try {
+          const userDocSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (userDocSnap.exists()) {
+            userData = userDocSnap.data();
+          } else {
+            // Fallback query by email if document was created with email key
+            const emailQuery = await getDocs(query(collection(db, 'users'), where('email', '==', firebaseUser.email))).catch(() => null);
+            if (emailQuery && !emailQuery.empty) {
+              userData = emailQuery.docs[0].data();
+            }
+          }
+        } catch (readErr) {
+          console.warn('[DeliveryStore] Firestore read error:', readErr);
         }
 
-        const isOwner = firebaseUser.email?.toLowerCase() === 'olivepizzarjn@gmail.com' || firebaseUser.email?.toLowerCase() === 'webhub2811@gmail.com';
+        const emailLower = (firebaseUser.email || '').toLowerCase().trim();
+        const isOwner = emailLower === 'olivepizzarjn@gmail.com' || emailLower === 'webhub2811@gmail.com' || emailLower === 'olivepizzamaker@gmail.com';
+        
         if (isOwner) {
           role = 'owner';
         } else if (userData?.role) {
@@ -211,10 +225,10 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         console.warn('Auth init fallback:', err);
         set({
           user: firebaseUser,
-          riderProfile: { ...DEFAULT_RIDER_PROFILE, uid: firebaseUser.uid, email: firebaseUser.email || '' },
-          userRole: 'delivery_partner',
+          riderProfile: null,
+          userRole: null,
           isAuthChecking: false,
-          isAuthorized: true
+          isAuthorized: false
         });
       }
     });

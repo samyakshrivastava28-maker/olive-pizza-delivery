@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Mail, Truck, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -13,17 +13,48 @@ export default function LoginPage() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const navigate = useNavigate();
 
-  const verifyRiderRole = async (userEmail: string | null) => {
+  const formatAuthError = (err: any) => {
+    const code = err?.code || '';
+    switch (code) {
+      case 'auth/invalid-credential':
+      case 'auth/wrong-password':
+      case 'auth/user-not-found':
+        return 'Invalid email or password. Please check your credentials.';
+      case 'auth/invalid-email':
+        return 'Please enter a valid email address.';
+      case 'auth/user-disabled':
+        return 'This rider account has been disabled. Please contact management.';
+      case 'auth/too-many-requests':
+        return 'Too many failed login attempts. Please try again in a few minutes.';
+      case 'auth/network-request-failed':
+        return 'Network connection error. Please check your internet connection.';
+      case 'auth/popup-closed-by-user':
+        return '';
+      default:
+        return err?.message || 'Login failed. Please try again.';
+    }
+  };
+
+  const verifyRiderRole = async (userEmail: string | null, uid?: string) => {
     if (!userEmail) return false;
     const normalized = userEmail.toLowerCase().trim();
-    const isOwner = normalized === 'olivepizzarjn@gmail.com' || normalized === 'webhub2811@gmail.com';
+    const isOwner = normalized === 'olivepizzarjn@gmail.com' || normalized === 'webhub2811@gmail.com' || normalized === 'olivepizzamaker@gmail.com';
     if (isOwner) return true;
 
     try {
-      const userDoc = await getDocs(query(collection(db, 'users'), where('email', '==', normalized))).catch(() => null);
+      if (uid) {
+        const docSnap = await getDoc(doc(db, 'users', uid));
+        if (docSnap.exists()) {
+          const role = docSnap.data()?.role || 'customer';
+          const allowedRoles = ['delivery_partner', 'delivery', 'developer', 'restaurant_manager', 'manager', 'owner', 'admin'];
+          return allowedRoles.includes(role);
+        }
+      }
+
+      const userDocs = await getDocs(query(collection(db, 'users'), where('email', '==', normalized))).catch(() => null);
       let role = 'customer';
-      if (userDoc && !userDoc.empty) {
-        role = userDoc.docs[0].data()?.role || 'customer';
+      if (userDocs && !userDocs.empty) {
+        role = userDocs.docs[0].data()?.role || 'customer';
       }
       const allowedRoles = ['delivery_partner', 'delivery', 'developer', 'restaurant_manager', 'manager', 'owner', 'admin'];
       return allowedRoles.includes(role);
@@ -37,8 +68,8 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await signInWithEmailAndPassword(auth, email.trim(), password);
-      const isAllowed = await verifyRiderRole(email);
+      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+      const isAllowed = await verifyRiderRole(cred.user.email, cred.user.uid);
 
       if (!isAllowed) {
         toast.error('Access denied. This app is for Olive Pizza Delivery Partners only.');
@@ -50,7 +81,8 @@ export default function LoginPage() {
       toast.success('Welcome back, Delivery Partner!');
       navigate('/dashboard');
     } catch (err: any) {
-      toast.error(err.message || 'Login failed. Please check your credentials.');
+      const msg = formatAuthError(err);
+      if (msg) toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -62,7 +94,7 @@ export default function LoginPage() {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       const result = await signInWithPopup(auth, provider);
-      const isAllowed = await verifyRiderRole(result.user.email);
+      const isAllowed = await verifyRiderRole(result.user.email, result.user.uid);
 
       if (!isAllowed) {
         toast.error('Access denied. Your Google account is not registered as a delivery partner.');
@@ -75,9 +107,8 @@ export default function LoginPage() {
       navigate('/dashboard');
     } catch (err: any) {
       console.warn('Google sign in error:', err);
-      if (err.code !== 'auth/popup-closed-by-user') {
-        toast.error(err.message || 'Google Sign-In failed.');
-      }
+      const msg = formatAuthError(err);
+      if (msg) toast.error(msg);
     } finally {
       setGoogleLoading(false);
     }

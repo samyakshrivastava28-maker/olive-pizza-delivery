@@ -15,8 +15,9 @@ export function getApiBaseUrl(): string {
 
 export function getApiUrl(endpoint: string = ''): string {
   const clean = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
-  if (import.meta.env.PROD) {
-    return PRODUCTION_BACKEND_URL + clean;
+  const baseUrl = getApiBaseUrl();
+  if (baseUrl) {
+    return baseUrl.replace(/\/+$/, '') + clean;
   }
   return clean;
 }
