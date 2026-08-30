@@ -1,0 +1,47 @@
+﻿# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build & Output
+dist/
+dist-ssr/
+build/
+coverage/
+*.local
+
+# Environment & Secrets (CRITICAL)
+.env
+.env.*
+*.env
+*.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials/
+serviceAccountKey*.json
+service-account*.json
+*serviceAccount*.json
+.r2_mock/
+cloudflared/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# OS & IDE
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+scratch/
