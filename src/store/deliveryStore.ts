@@ -13,6 +13,7 @@ import {
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { db, auth } from '../lib/firebase';
 import { fetchApi } from '../lib/api';
+import { offlineGpsBuffer } from '../lib/offlineGpsBuffer';
 import type { 
   DeliveryOrder, 
   OrderStatus, 
@@ -533,18 +534,14 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     const uid = get().user?.uid;
     const activeOrder = get().activeOrders[0];
 
-    try {
-      await fetchApi('/api/delivery/rider/location', {
-        method: 'POST',
-        body: JSON.stringify({
-          lat,
-          lng,
-          heading,
-          speed,
-          activeOrderId: activeOrder?.id || null
-        })
-      });
-    } catch {}
+    // Enqueue to offline buffer queue
+    offlineGpsBuffer.enqueue({
+      lat,
+      lng,
+      heading,
+      speed,
+      activeOrderId: activeOrder?.id || null
+    });
 
     if (uid) {
       try {
