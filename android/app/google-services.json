@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "1017239455106",
+    "project_id": "olive-pizza-08",
+    "storage_bucket": "olive-pizza-08.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1017239455106:android:delivery001007b9b",
+        "android_client_info": {
+          "package_name": "in.olivepizza.delivery"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1017239455106-i8vrpdq1v51pkg0308k7btu1o4img597.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyANBCVFXCLH6JB27yzpAIOshzjAm7qyVxw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1017239455106-i8vrpdq1v51pkg0308k7btu1o4img597.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
