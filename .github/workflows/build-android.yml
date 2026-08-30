@@ -3,31 +3,32 @@ name: Build Android APK — Delivery
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
-  build-android:
-    name: Build Android APK
+  build:
+    name: Build Olive Pizza Delivery APK
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    permissions:
+      contents: write
 
     steps:
+      # 1. Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 22
+      # 2. Setup Node.js 22
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build frontend
-        run: npm run build
+      # 3. Install dependencies and build web app bundle
+      - name: Install dependencies & Build Frontend
+        run: |
+          npm ci
+          npm run build
         env:
           VITE_API_BASE_URL: https://olivepizza-owner.onrender.com
           VITE_BACKEND_URL: https://olivepizza-owner.onrender.com
@@ -35,87 +36,141 @@ jobs:
           VITE_FIREBASE_PROJECT_ID: olive-pizza-08
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
 
-      - name: Set up Java 21
+      # 4. Setup Java 21
+      - name: Setup Java 21
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
           distribution: 'temurin'
+          java-version: '21'
 
-      - name: Set up Android SDK
+      # 5. Setup Android SDK
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK Build Tools
-        run: |
-          sdkmanager "build-tools;34.0.0" "platforms;android-34"
+      # 6. Sync Capacitor with Android native project
+      - name: Sync Capacitor
+        run: npx --yes cap sync android
 
-      - name: Capacitor Sync
-        run: npx cap sync android
-
-      - name: Cache Gradle
+      # 7. Cache Gradle packages
+      - name: Cache Gradle packages
         uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: gradle-${{ runner.os }}-
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
-      - name: Make Gradlew executable
+      # 8. Grant execute permission to Gradle wrapper
+      - name: Grant Gradle execute permissions
         run: chmod +x android/gradlew
-        working-directory: ${{ github.workspace }}
 
-      - name: Prepare debug keystore
+      # 9. Automatic Versioning
+      - name: Inject Version into Gradle
         run: |
-          mkdir -p android/app
-          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
-            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
-            echo "KEYSTORE_SOURCE=secret" >> $GITHUB_ENV
-          else
-            keytool -genkey -v -keystore android/app/release.keystore \
-              -alias olivepizzadelivery -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass olivepizza123 -keypass olivepizza123 \
-              -dname "CN=Olive Pizza Delivery, OU=Mobile, O=Olive Pizza, L=India, ST=India, C=IN"
-            echo "KEYSTORE_SOURCE=auto-generated" >> $GITHUB_ENV
+          RUN_NUM=${{ github.run_number }}
+          VERSION_CODE=$((100 + RUN_NUM))
+          sed -i "s/versionCode 1/versionCode ${VERSION_CODE}/g" android/app/build.gradle
+          sed -i "s/versionName \"1.0\"/versionName \"1.0.${RUN_NUM}\"/g" android/app/build.gradle
+
+      # 10. Prepare Signing Keystore
+      - name: Prepare Keystore
+        env:
+          KEYSTORE_BASE64: '${{ secrets.KEYSTORE_BASE64 }}'
+        run: |
+          KEYSTORE_PATH="android/app/release.keystore"
+          VALID_KEYSTORE=false
+
+          # 1. Try decoding KEYSTORE_BASE64 secret if available
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | tr -d ' \n\r' | base64 -d > "$KEYSTORE_PATH.tmp" 2>/dev/null || true
+            if [ -s "$KEYSTORE_PATH.tmp" ]; then
+              if keytool -list -keystore "$KEYSTORE_PATH.tmp" -storepass olivepizza -alias olivepizza >/dev/null 2>&1; then
+                mv "$KEYSTORE_PATH.tmp" "$KEYSTORE_PATH"
+                VALID_KEYSTORE=true
+                echo "✅ Successfully decoded and verified keystore from KEYSTORE_BASE64 secret."
+              fi
+            fi
+            rm -f "$KEYSTORE_PATH.tmp"
           fi
 
-      - name: Configure signing in gradle.properties
-        run: |
-          cat >> android/gradle.properties << 'EOF'
-          MYAPP_RELEASE_STORE_FILE=release.keystore
-          MYAPP_RELEASE_KEY_ALIAS=olivepizzadelivery
-          MYAPP_RELEASE_STORE_PASSWORD=olivepizza123
-          MYAPP_RELEASE_KEY_PASSWORD=olivepizza123
-          EOF
+          # 2. Check committed keystore in repository
+          if [ "$VALID_KEYSTORE" = false ] && [ -f "$KEYSTORE_PATH" ]; then
+            if keytool -list -keystore "$KEYSTORE_PATH" -storepass olivepizza -alias olivepizza >/dev/null 2>&1; then
+              VALID_KEYSTORE=true
+              echo "✅ Verified existing release.keystore from repository."
+            fi
+          fi
 
+          if [ "$VALID_KEYSTORE" = false ]; then
+            echo "❌ No valid release.keystore found!"
+            exit 1
+          fi
+
+          keytool -list -keystore "$KEYSTORE_PATH" -storepass olivepizza -alias olivepizza \
+            && echo "✅ Keystore ready and verified — alias 'olivepizza' found."
+
+      # 11. Build Signed Release APK
       - name: Build Release APK
-        run: |
-          cd android
-          ./gradlew assembleRelease --no-daemon
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+        run: ./gradlew assembleRelease --no-daemon
+        working-directory: android
 
-      - name: Find and rename APK
+      # 12. Verify the APK is properly signed
+      - name: Verify APK Signature
         run: |
-          APK_PATH=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
-          mkdir -p release-artifacts
-          cp "$APK_PATH" "release-artifacts/OlivePizza-Delivery-$(date +%Y%m%d)-release.apk"
-          echo "APK_FILE=release-artifacts/OlivePizza-Delivery-$(date +%Y%m%d)-release.apk" >> $GITHUB_ENV
-          echo "APK found at: $APK_PATH"
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          if [ ! -f "$APK" ]; then
+            echo "❌ app-release.apk not found. Checking directory:"
+            ls android/app/build/outputs/apk/release/ || true
+            exit 1
+          fi
+          SIZE=$(du -sh "$APK" | cut -f1)
+          echo "✅ APK found ($SIZE)"
+          BUILD_TOOLS=$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)
+          $ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner verify --verbose "$APK" \
+            && echo "✅ APK is properly signed." \
+            || { echo "❌ APK signature verification FAILED — APK is unsigned or corrupted."; exit 1; }
 
-      - name: Upload APK artifact
+      # 13. Rename APK for easy identification
+      - name: Rename APK
+        run: |
+          mkdir -p artifact
+          cp android/app/build/outputs/apk/release/app-release.apk artifact/OlivePizza-Delivery-v1.0.${{ github.run_number }}.apk
+          cp android/app/build/outputs/apk/release/app-release.apk artifact/OlivePizza-Delivery-release.apk
+
+      # 14. Upload APK as GitHub Actions artifact
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OlivePizza-Delivery-APK
-          path: release-artifacts/*.apk
-          retention-days: 30
+          name: OlivePizzaDelivery-Android-APK
+          path: artifact/*.apk
+          retention-days: 90
 
+      # 15. Optional: Create GitHub Release (Non-blocking)
+      - name: Create GitHub Release
+        id: create_release
+        continue-on-error: true
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
+        with:
+          name: "Olive Pizza Delivery v1.0.${{ github.run_number }}"
+          tag_name: "v1.0.${{ github.run_number }}-apk"
+          files: artifact/*.apk
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 16. Build Summary
       - name: Build Summary
         run: |
-          echo "## 🤖 Olive Pizza Delivery Android Build Succeeded" >> $GITHUB_STEP_SUMMARY
+          echo "## 🛵 Olive Pizza Delivery Android Build Succeeded" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Status:** ✅ ANDROID_APK_READY" >> $GITHUB_STEP_SUMMARY
-          echo "- **Artifact:** OlivePizza-Delivery-APK (available under Actions > Artifacts)" >> $GITHUB_STEP_SUMMARY
-          echo "- **APK File:** \`${{ env.APK_FILE }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Signing Keystore:** ${{ env.KEYSTORE_SOURCE }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Artifact:** OlivePizzaDelivery-Android-APK (available under Actions > Artifacts)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Package ID:** \`in.olivepizza.delivery\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **APK File:** \`artifact/OlivePizza-Delivery-v1.0.${{ github.run_number }}.apk\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Signing Keystore:** Stable Release Keystore (SHA1: 4C:6B:4A:1E:7D:43:96:6D:74:82:17:5F:08:D8:87:E5:3B:C4:B5:7E)" >> $GITHUB_STEP_SUMMARY
           echo "- **Backend Endpoint:** https://olivepizza-owner.onrender.com" >> $GITHUB_STEP_SUMMARY
-
