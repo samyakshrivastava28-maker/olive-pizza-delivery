@@ -109,19 +109,13 @@ jobs:
           path: release-artifacts/*.apk
           retention-days: 30
 
-      - name: Create GitHub Release (main branch only)
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: android-latest
-          name: 'Olive Pizza Delivery — Android Build'
-          body: |
-            🤖 **Olive Pizza Delivery Android Build**
-            - Branch: ${{ github.ref_name }}
-            - Commit: ${{ github.sha }}
-            - Keystore: ${{ env.KEYSTORE_SOURCE }}
-            - Backend: https://olivepizza-owner.onrender.com
-          files: release-artifacts/*.apk
-          make_latest: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Summary
+        run: |
+          echo "## 🤖 Olive Pizza Delivery Android Build Succeeded" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ✅ ANDROID_APK_READY" >> $GITHUB_STEP_SUMMARY
+          echo "- **Artifact:** OlivePizza-Delivery-APK (available under Actions > Artifacts)" >> $GITHUB_STEP_SUMMARY
+          echo "- **APK File:** \`${{ env.APK_FILE }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Signing Keystore:** ${{ env.KEYSTORE_SOURCE }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Backend Endpoint:** https://olivepizza-owner.onrender.com" >> $GITHUB_STEP_SUMMARY
+
