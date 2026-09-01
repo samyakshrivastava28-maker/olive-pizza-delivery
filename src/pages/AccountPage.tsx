@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   User, 
   Phone, 
@@ -8,15 +8,31 @@ import {
   ShieldCheck, 
   Calendar, 
   Star, 
-  Award 
+  Award,
+  CheckCircle,
+  Edit3
 } from 'lucide-react';
 import { useDeliveryStore } from '../store/deliveryStore';
+import { PhoneVerificationModal } from '../components/PhoneVerificationModal';
 
 export default function AccountPage() {
-  const { riderProfile } = useDeliveryStore();
+  const { riderProfile, updateRiderPhone } = useDeliveryStore();
+  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
+
+  const handlePhoneUpdated = (newPhone: string) => {
+    if (updateRiderPhone) {
+      updateRiderPhone(newPhone);
+    }
+  };
 
   return (
     <div className="space-y-4">
+      <PhoneVerificationModal
+        isOpen={isVerifyModalOpen}
+        currentPhone={riderProfile?.phone || ''}
+        onClose={() => setIsVerifyModalOpen(false)}
+        onSuccess={handlePhoneUpdated}
+      />
       <div className="p-5 rounded-3xl bg-gradient-to-br from-[#0F172A] via-[#131E35] to-[#0F172A] border border-slate-800 text-center space-y-3 shadow-xl">
         <div className="w-16 h-16 rounded-full bg-amber-500/20 border-2 border-amber-500/40 text-amber-400 flex items-center justify-center font-black text-xl mx-auto shadow-lg shadow-amber-500/10">
           {(riderProfile?.name || 'R').charAt(0).toUpperCase()}
@@ -58,7 +74,16 @@ export default function AccountPage() {
           <span className="text-slate-400 flex items-center gap-2">
             <Phone className="w-3.5 h-3.5 text-slate-500" /> Contact Phone
           </span>
-          <strong className="text-white">{riderProfile?.phone}</strong>
+          <div className="flex items-center gap-2">
+            <strong className="text-white font-mono">{riderProfile?.phone}</strong>
+            <button
+              onClick={() => setIsVerifyModalOpen(true)}
+              className="px-2 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+            >
+              <ShieldCheck className="w-3 h-3 text-amber-400" />
+              <span>Verify / Edit</span>
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center justify-between py-1">

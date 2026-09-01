@@ -60,6 +60,7 @@ interface DeliveryState {
   confirmPickup: (orderId: string) => Promise<boolean>;
   completeDelivery: (orderId: string, proof?: { proofImageUrl?: string; signatureUrl?: string; notes?: string }) => Promise<{ success: boolean; error?: string }>;
   updateGpsLocation: (lat: number, lng: number, heading?: number, speed?: number) => Promise<void>;
+  updateRiderPhone: (phone: string) => void;
 }
 
 let activeOrdersUnsub: Unsubscribe | null = null;
@@ -571,5 +572,11 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         }, { merge: true }).catch(() => {});
       } catch {}
     }
+  },
+
+  updateRiderPhone: (phone: string) => {
+    set((state) => ({
+      riderProfile: state.riderProfile ? { ...state.riderProfile, phone } : null
+    }));
   }
 }));
