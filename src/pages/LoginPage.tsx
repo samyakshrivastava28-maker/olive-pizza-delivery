@@ -4,6 +4,7 @@ import { auth, db } from '../lib/firebase';
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Mail, Truck, ShieldCheck } from 'lucide-react';
+import { AppLogo } from '../components/common/AppLogo';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
@@ -118,12 +119,9 @@ export default function LoginPage() {
     <div className="min-h-screen bg-[#090E17] flex items-center justify-center p-4">
       <div className="w-full max-w-sm rounded-3xl bg-[#0F172A] border border-slate-800 p-6 shadow-2xl space-y-5">
         {/* Header */}
-        <div className="text-center space-y-2">
-          <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center font-black text-xl mx-auto shadow-lg shadow-amber-500/10">
-            <Truck className="w-7 h-7" />
-          </div>
-          <h1 className="text-lg font-black text-white tracking-tight">Olive Pizza Delivery</h1>
-          <p className="text-xs text-slate-400">Sign in to your rider partner console</p>
+        <div className="flex flex-col items-center text-center space-y-2">
+          <AppLogo variant="full" size="xl" subtitle="Delivery Partner Fleet" />
+          <p className="text-xs text-slate-400 pt-1">Sign in to your rider partner console</p>
         </div>
 
         {/* Continue with Google Button */}
