@@ -9,10 +9,12 @@ import AccountPage from './pages/AccountPage';
 import SettingsPage from './pages/SettingsPage';
 import LoginPage from './pages/LoginPage';
 import AccessDeniedPage from './pages/AccessDeniedPage';
+import DeliveryPushNotificationManager from './services/DeliveryPushNotificationManager';
 
 export default function App() {
   return (
     <BrowserRouter>
+      <DeliveryPushNotificationManager />
       <Toaster 
         position="top-center" 
         toastOptions={{
