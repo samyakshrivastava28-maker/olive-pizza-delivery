@@ -1,9 +1,13 @@
+import { Capacitor } from '@capacitor/core';
 import { getCurrentAuthToken } from './firebase';
 
 export const PRODUCTION_BACKEND_URL = "https://olivepizza-owner.onrender.com";
-export const DEV_BACKEND_URL = "http://localhost:5175";
+export const DEV_BACKEND_URL = "http://localhost:5000";
 
 export function getApiBaseUrl(): string {
+  if (Capacitor.isNativePlatform()) {
+    return PRODUCTION_BACKEND_URL;
+  }
   if (import.meta.env.VITE_API_BASE_URL) {
     return import.meta.env.VITE_API_BASE_URL;
   }
