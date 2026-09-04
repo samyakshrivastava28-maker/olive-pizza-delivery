@@ -6,15 +6,23 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     androidScheme: 'https',
-    iosScheme: 'https'
+    iosScheme: 'https',
+    allowNavigation: ['*.firebaseapp.com', '*.googleapis.com', '*.onrender.com'],
   },
   ios: {
-    contentInset: 'always'
+    contentInset: 'always',
+  },
+  android: {
+    allowMixedContent: true,
+    captureInput: true,
+    webContentsDebuggingEnabled: false,
+    backgroundColor: '#090e17',
   },
   plugins: {
     FirebaseAuthentication: {
       skipNativeAuth: false,
       providers: ['google.com'],
+      googleClientId: '1017239455106-i8vrpdq1v51pkg0308k7btu1o4img597.apps.googleusercontent.com',
     },
     PushNotifications: {
       presentationOptions: ['badge', 'sound', 'alert'],

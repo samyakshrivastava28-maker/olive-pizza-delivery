@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { Lock, Mail, Truck, ShieldCheck } from 'lucide-react';
 import { AppLogo } from '../components/common/AppLogo';
 import toast from 'react-hot-toast';
+import { requestPostLoginNotificationPermissions } from '../services/notificationPermissionService';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -81,6 +82,7 @@ export default function LoginPage() {
       }
 
       toast.success('Welcome back, Delivery Partner!');
+      requestPostLoginNotificationPermissions().catch(() => {});
       navigate('/dashboard');
     } catch (err: any) {
       const msg = formatAuthError(err);
@@ -118,6 +120,7 @@ export default function LoginPage() {
       }
 
       toast.success('Signed in with Google successfully!');
+      requestPostLoginNotificationPermissions().catch(() => {});
       navigate('/dashboard');
     } catch (err: any) {
       console.warn('Google sign in error:', err);
