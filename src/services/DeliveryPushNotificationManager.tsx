@@ -9,11 +9,123 @@ import { NotificationDeduplicator } from '../lib/NotificationDeduplicator';
 import { Bell, Volume2, CheckCircle, X, MapPin, Navigation } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+import { PushNotifications } from '@capacitor/push-notifications';
+import { Capacitor } from '@capacitor/core';
+
 export default function DeliveryPushNotificationManager() {
   const { user, isAuthorized, isOnline, acceptDelivery, declineDelivery } = useDeliveryStore();
   const [showPromptBanner, setShowPromptBanner] = useState(false);
   const [urgentAssignment, setUrgentAssignment] = useState<any | null>(null);
   const isRegisteredRef = useRef(false);
+
+  // Create Android Notification Channels
+  const createChannels = useCallback(async () => {
+    if (!Capacitor.isNativePlatform()) return;
+    try {
+      await PushNotifications.createChannel({
+        id: 'olive_delivery_assignment',
+        name: 'Delivery Assignments',
+        description: 'Urgent delivery assignment alerts with ringing. Wakes screen.',
+        importance: 5,
+        visibility: 1,
+        vibration: true,
+        sound: 'delivery_chime',
+      });
+      await PushNotifications.createChannel({
+        id: 'olive_system',
+        name: 'System Alerts',
+        description: 'System and order updates',
+        importance: 4,
+        visibility: 1,
+        vibration: true,
+        sound: 'system_alert',
+      });
+    } catch (e) {
+      console.warn('[Delivery PushManager] Channel creation notice:', e);
+    }
+  }, []);
+
+  // Token Registration (Native Android/iOS + Web Push)
+  const registerToken = useCallback(async () => {
+    if (isRegisteredRef.current || !user) return;
+
+    try {
+      if (Capacitor.isNativePlatform()) {
+        await createChannels();
+
+        let permStatus = await PushNotifications.checkPermissions();
+        if (permStatus.receive === 'prompt' || permStatus.receive === ('prompt-with-rationale' as any)) {
+          permStatus = await PushNotifications.requestPermissions();
+        }
+        if (permStatus.receive !== 'granted') {
+          console.warn('[Delivery PushManager] Native push permission not granted');
+          return;
+        }
+
+        await PushNotifications.removeAllListeners();
+
+        PushNotifications.addListener('registration', async (pushToken) => {
+          if (pushToken.value) {
+            await fetchApi('/api/notifications/token', {
+              method: 'POST',
+              body: JSON.stringify({
+                token: pushToken.value,
+                platform: Capacitor.getPlatform(),
+                deviceName: `${Capacitor.getPlatform().toUpperCase()} Rider Device`,
+                appName: 'delivery',
+                role: 'delivery'
+              })
+            }).catch(() => {});
+            isRegisteredRef.current = true;
+          }
+        });
+
+        PushNotifications.addListener('registrationError', (error) => {
+          console.error('[Delivery PushManager] Registration error:', error);
+        });
+
+        PushNotifications.addListener('pushNotificationReceived', (notification) => {
+          console.log('[Delivery PushManager] Push received in foreground:', notification);
+          SoundAlertEngine.startContinuousAlarm();
+        });
+
+        await PushNotifications.register();
+        return;
+      }
+
+      // Web Push via Service Worker & Firebase Messaging
+      if ('serviceWorker' in navigator && 'Notification' in window && Notification.permission === 'granted') {
+        const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js').catch(() => null);
+        const { getMessaging, getToken, isSupported } = await import('firebase/messaging');
+        const { app } = await import('../lib/firebase');
+        const supported = await isSupported().catch(() => false);
+        if (supported) {
+          const messaging = getMessaging(app);
+          const currentToken = await getToken(messaging, {
+            vapidKey: 'BDfxvZSqSw6Es3dvXz4VZMwjNFKMCCfRSgdCVty3rfqqBZ6AAWFlZ2EwWQR8ltp6DRMTUKOmH9Rlu0fjCziOKDk',
+            serviceWorkerRegistration: swReg || undefined
+          }).catch(() => null);
+
+          if (currentToken) {
+            await fetchApi('/api/notifications/token', {
+              method: 'POST',
+              body: JSON.stringify({
+                token: currentToken,
+                platform: 'web',
+                browser: navigator.userAgent,
+                deviceName: navigator.platform || 'Rider Web Device',
+                appName: 'delivery',
+                role: 'delivery'
+              })
+            });
+            isRegisteredRef.current = true;
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn('[Delivery PushManager] Token registration warning:', err.message);
+    }
+  }, [user, createChannels]);
 
   // 1. Check permission on Auth
   useEffect(() => {
@@ -26,41 +138,24 @@ export default function DeliveryPushNotificationManager() {
         registerToken();
       }
     });
-  }, [user, isAuthorized]);
+  }, [user, isAuthorized, registerToken]);
 
-  // 2. Token Registration (Role & App Scoped: delivery)
-  const registerToken = useCallback(async () => {
-    if (isRegisteredRef.current || !user) return;
-    try {
-      if ('serviceWorker' in navigator && 'Notification' in window && Notification.permission === 'granted') {
-        const { getMessaging, getToken, isSupported } = await import('firebase/messaging');
-        const { app } = await import('../lib/firebase');
-        const supported = await isSupported().catch(() => false);
-        if (supported) {
-          const messaging = getMessaging(app);
-          const currentToken = await getToken(messaging, {
-            vapidKey: 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkGsZ_994Re362vMV24HgGpx0GuqTTAqwWRWtd9USQ'
-          }).catch(() => null);
-
-          if (currentToken) {
-            await fetchApi('/api/notifications/token', {
-              method: 'POST',
-              body: JSON.stringify({
-                token: currentToken,
-                platform: 'web',
-                browser: navigator.userAgent,
-                deviceName: navigator.platform || 'Rider Mobile Device',
-                appName: 'delivery'
-              })
-            });
-            isRegisteredRef.current = true;
-          }
-        }
+  // BroadcastChannel listener for Service Worker background alerts
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
+    const channel = new BroadcastChannel('olive_pizza_notifications');
+    channel.onmessage = (event) => {
+      const data = event.data || {};
+      if (data.type === 'START_ALERT') {
+        SoundAlertEngine.startContinuousAlarm();
+      } else if (data.type === 'STOP_ALERT') {
+        SoundAlertEngine.stopAlarm();
       }
-    } catch (err: any) {
-      console.warn('[Delivery PushManager] Token registration warning:', err.message);
-    }
-  }, [user]);
+    };
+    return () => {
+      channel.close();
+    };
+  }, []);
 
   const handleEnablePermission = async () => {
     SoundAlertEngine.unlockAudio();
