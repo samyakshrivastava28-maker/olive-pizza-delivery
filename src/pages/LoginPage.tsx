@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
+import { Capacitor } from '@capacitor/core';
 import { auth, db } from '../lib/firebase';
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
@@ -92,9 +93,21 @@ export default function LoginPage() {
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
-      const result = await signInWithPopup(auth, provider);
+      let result;
+      if (Capacitor.isNativePlatform()) {
+        const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
+        const nativeResult = await FirebaseAuthentication.signInWithGoogle();
+        if (nativeResult.credential?.idToken) {
+          const credential = GoogleAuthProvider.credential(nativeResult.credential.idToken);
+          result = await signInWithCredential(auth, credential);
+        } else {
+          throw new Error('Google Sign-In failed on device.');
+        }
+      } else {
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
+        result = await signInWithPopup(auth, provider);
+      }
       const isAllowed = await verifyRiderRole(result.user.email, result.user.uid);
 
       if (!isAllowed) {
