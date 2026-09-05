@@ -24,20 +24,6 @@
 
         </activity>
 
-        <activity
-            android:name=".AlarmActivity"
-            android:showOnLockScreen="true"
-            android:turnScreenOn="true"
-            android:excludeFromRecents="true"
-            android:launchMode="singleInstance"
-            android:screenOrientation="portrait"
-            android:exported="true"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar">
-            <intent-filter>
-                <action android:name="olive_alarm" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
 
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"

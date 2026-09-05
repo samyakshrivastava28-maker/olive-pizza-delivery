@@ -2,7 +2,7 @@
   "name": "olive-pizza-delivery",
   "private": true,
   "version": "1.0.0",
-  "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite --port 5177",
     "build": "tsc && vite build",
