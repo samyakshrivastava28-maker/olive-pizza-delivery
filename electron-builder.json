@@ -1,0 +1,39 @@
+﻿{
+  "appId": "in.olivepizza.delivery",
+  "productName": "Olive Pizza Delivery",
+  "npmRebuild": false,
+  "directories": {
+    "buildResources": "electron/resources",
+    "output": "dist-electron"
+  },
+  "files": [
+    "electron/**/*",
+    "dist/**/*",
+    "!node_modules/**/*"
+  ],
+  "win": {
+    "target": [{ "target": "nsis", "arch": ["x64"] }],
+    "artifactName": "OlivePizzaDelivery-Setup.${ext}",
+    "icon": "electron/resources/icon.png"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Olive Pizza Delivery"
+  },
+  "mac": {
+    "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }],
+    "artifactName": "OlivePizzaDelivery.${ext}",
+    "category": "public.app-category.business",
+    "icon": "electron/resources/icon.png"
+  },
+  "dmg": {
+    "background": null,
+    "window": {
+      "width": 540,
+      "height": 380
+    }
+  }
+}
