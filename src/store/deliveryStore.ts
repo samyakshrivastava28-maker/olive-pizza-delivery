@@ -12,8 +12,8 @@ import {
   updateDoc
 } from 'firebase/firestore';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
-import { db, auth } from '../lib/firebase';
-import { fetchApi } from '../lib/api';
+import { auth, db } from '../lib/firebase';
+import { fetchApi, getApiUrl } from '../lib/api';
 import { offlineGpsBuffer } from '../lib/offlineGpsBuffer';
 import type { 
   DeliveryOrder, 
@@ -29,6 +29,9 @@ interface DeliveryState {
   userRole: string | null;
   isAuthChecking: boolean;
   isAuthorized: boolean;
+  restrictedReason: string | null;
+  restrictedEmail: string | null;
+  clearRestricted: () => void;
   isOnline: boolean;
   
   // Live Active Orders assigned to this rider
@@ -113,6 +116,9 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
   userRole: null,
   isAuthChecking: true,
   isAuthorized: false,
+  restrictedReason: null,
+  restrictedEmail: null,
+  clearRestricted: () => set({ restrictedReason: null, restrictedEmail: null }),
   isOnline: true,
   
   activeOrders: [],
@@ -140,97 +146,119 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
           userRole: null,
           isAuthChecking: false,
           isAuthorized: false,
+          restrictedReason: null,
+          restrictedEmail: null,
           activeOrders: []
         });
         return;
       }
 
-      try {
-        let role = 'delivery_partner';
-        let branchId = 'main_branch';
-        let branchName = 'Olive Pizza — Rajnandgaon (Main Branch)';
+      const emailLower = (firebaseUser.email || '').toLowerCase().trim();
 
-        const res = await fetchApi('/api/delivery/rider/me');
-        if (res.success && res.rider) {
+      try {
+        const idToken = await firebaseUser.getIdToken();
+        const resp = await fetch(getApiUrl('api/auth/authorize-app'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`
+          },
+          body: JSON.stringify({
+            targetApp: 'DELIVERY'
+          })
+        });
+
+        const authData = await resp.json().catch(() => null);
+
+        if (resp.ok && authData?.authorized) {
+          const u = authData.user;
+          const profile: RiderProfile = {
+            ...DEFAULT_RIDER_PROFILE,
+            uid: firebaseUser.uid,
+            id: firebaseUser.uid,
+            name: u.name || firebaseUser.displayName || emailLower.split('@')[0] || 'Delivery Partner',
+            email: firebaseUser.email || '',
+            phone: u.phone || '+91 91799 44445',
+            role: u.role || 'delivery_partner',
+            branchId: u.branchId || 'main_branch',
+            branchName: u.branchName || 'Olive Pizza — Rajnandgaon (Main Branch)',
+            isOnline: true
+          };
+
           set({
             user: firebaseUser,
-            riderProfile: res.rider,
-            userRole: res.rider.role || 'delivery_partner',
-            isOnline: res.rider.isOnline !== false,
+            riderProfile: profile,
+            userRole: profile.role,
+            isOnline: true,
             isAuthChecking: false,
-            isAuthorized: true
+            isAuthorized: true,
+            restrictedReason: null,
+            restrictedEmail: null
+          });
+
+          get().subscribeToActiveOrders(firebaseUser.uid);
+          get().fetchTodayStats();
+          get().fetchMonthlyReports();
+        } else {
+          // Unauthorized account — wipe session and enforce immediate sign out
+          const denialReason = authData?.reason || 'This account is not authorized to use this Olive Pizza application.';
+          console.warn('[DeliveryStore] Access restricted for account:', emailLower, denialReason);
+
+          await signOut(auth).catch(() => {});
+          localStorage.removeItem('delivery_rider_profile');
+          sessionStorage.clear();
+
+          set({
+            user: null,
+            riderProfile: null,
+            userRole: null,
+            isAuthChecking: false,
+            isAuthorized: false,
+            restrictedReason: denialReason,
+            restrictedEmail: emailLower,
+            activeOrders: []
+          });
+        }
+      } catch (err: any) {
+        console.error('[DeliveryStore] Auth handshake network error:', err);
+
+        const isMasterOwner = emailLower === 'olivepizzarjn@gmail.com' || emailLower === 'webhub2811@gmail.com' || emailLower === 'olivepizzamaker@gmail.com';
+        if (isMasterOwner) {
+          const profile: RiderProfile = {
+            ...DEFAULT_RIDER_PROFILE,
+            uid: firebaseUser.uid,
+            id: firebaseUser.uid,
+            name: 'Platform Owner',
+            email: emailLower,
+            role: 'owner',
+            isOnline: true
+          };
+          set({
+            user: firebaseUser,
+            riderProfile: profile,
+            userRole: 'owner',
+            isOnline: true,
+            isAuthChecking: false,
+            isAuthorized: true,
+            restrictedReason: null,
+            restrictedEmail: null
           });
           get().subscribeToActiveOrders(firebaseUser.uid);
           get().fetchTodayStats();
           get().fetchMonthlyReports();
-          return;
+        } else {
+          await signOut(auth).catch(() => {});
+          set({
+            user: null,
+            riderProfile: null,
+            userRole: null,
+            isAuthChecking: false,
+            isAuthorized: false,
+            restrictedReason: 'This account is not authorized to use this Olive Pizza application.',
+            restrictedEmail: emailLower,
+            activeOrders: []
+          });
         }
-
-        // 1. Try reading user document directly by UID (Fast, Indexed, Rule-compliant)
-        let userData: any = null;
-        try {
-          const userDocSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
-          if (userDocSnap.exists()) {
-            userData = userDocSnap.data();
-          } else {
-            // Fallback query by email if document was created with email key
-            const emailQuery = await getDocs(query(collection(db, 'users'), where('email', '==', firebaseUser.email))).catch(() => null);
-            if (emailQuery && !emailQuery.empty) {
-              userData = emailQuery.docs[0].data();
-            }
-          }
-        } catch (readErr) {
-          console.warn('[DeliveryStore] Firestore read error:', readErr);
-        }
-
-        const emailLower = (firebaseUser.email || '').toLowerCase().trim();
-        const isOwner = emailLower === 'olivepizzarjn@gmail.com' || emailLower === 'webhub2811@gmail.com' || emailLower === 'olivepizzamaker@gmail.com';
-        
-        if (isOwner) {
-          role = 'owner';
-        } else if (userData?.role) {
-          role = userData.role;
-        }
-
-        const ALLOWED_ROLES = ['delivery_partner', 'delivery', 'owner', 'developer', 'admin', 'restaurant_manager', 'manager'];
-        const isAuthorized = ALLOWED_ROLES.includes(role);
-
-        const profile: RiderProfile = {
-          ...DEFAULT_RIDER_PROFILE,
-          uid: firebaseUser.uid,
-          id: firebaseUser.uid,
-          name: userData?.name || firebaseUser.displayName || 'Delivery Partner',
-          email: firebaseUser.email || '',
-          phone: userData?.phone || '+91 91799 44445',
-          role,
-          branchId: userData?.branchId || branchId,
-          branchName: userData?.branchName || branchName,
-          isOnline: userData?.isOnline !== false
-        };
-
-        set({
-          user: firebaseUser,
-          riderProfile: profile,
-          userRole: role,
-          isOnline: profile.isOnline,
-          isAuthChecking: false,
-          isAuthorized
-        });
-
-        if (isAuthorized) {
-          get().subscribeToActiveOrders(firebaseUser.uid);
-          get().fetchTodayStats();
-          get().fetchMonthlyReports();
-        }
-      } catch (err) {
-        console.warn('Auth init fallback:', err);
-        set({
-          user: firebaseUser,
-          riderProfile: null,
-          userRole: null,
-          isAuthChecking: false,
-          isAuthorized: false
-        });
       }
     });
 

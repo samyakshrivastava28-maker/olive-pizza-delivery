@@ -5,7 +5,7 @@ import { BottomNav } from './BottomNav';
 import { useDeliveryStore } from '../../store/deliveryStore';
 
 export const DeliveryLayout: React.FC = () => {
-  const { isAuthChecking, isAuthorized, initAuth, updateGpsLocation } = useDeliveryStore();
+  const { isAuthChecking, isAuthorized, restrictedReason, initAuth, updateGpsLocation } = useDeliveryStore();
 
   useEffect(() => {
     const unsub = initAuth();
@@ -44,6 +44,10 @@ export const DeliveryLayout: React.FC = () => {
         </div>
       </div>
     );
+  }
+
+  if (restrictedReason) {
+    return <Navigate to="/access-denied" replace />;
   }
 
   if (!isAuthorized) {

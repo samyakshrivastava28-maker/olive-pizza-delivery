@@ -29,6 +29,19 @@
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="olive_delivery_assignment" />
 
+        <receiver
+            android:name=".NotificationActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="action_navigate" />
+                <action android:name="action_arrived_at_store" />
+                <action android:name="action_pickup" />
+                <action android:name="action_out_for_delivery" />
+                <action android:name="action_arrived_at_customer" />
+                <action android:name="action_complete" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
