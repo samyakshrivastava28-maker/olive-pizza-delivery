@@ -158,7 +158,8 @@ jobs:
         with:
           name: "Olive Pizza Delivery — Latest Release (All Platforms)"
           tag_name: "latest"
-          files: artifact/*.apk
+          files: artifact/*-release.apk
+          clobber: true
           draft: false
           prerelease: false
           make_latest: true
