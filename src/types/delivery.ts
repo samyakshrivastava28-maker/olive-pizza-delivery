@@ -37,7 +37,7 @@ export interface DeliveryOrder {
   id: string;
   orderNumber?: string | number;
   dailyOrderNumber?: number;
-  userId: string;
+  userId?: string;
   customerName?: string;
   contactPhone: string;
   deliveryAddress: DeliveryAddress | string;
