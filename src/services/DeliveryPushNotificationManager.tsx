@@ -41,6 +41,15 @@ export default function DeliveryPushNotificationManager() {
         sound: 'delivery_chime',
       });
       await PushNotifications.createChannel({
+        id: 'olive_order_completed_v2',
+        name: 'Delivery Completed (v2)',
+        description: 'Delivered and completed delivery confirmations.',
+        importance: 4,
+        visibility: 1,
+        vibration: true,
+        sound: 'order_delivered',
+      });
+      await PushNotifications.createChannel({
         id: 'olive_system',
         name: 'System Alerts',
         description: 'System and order updates',

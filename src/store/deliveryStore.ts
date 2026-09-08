@@ -15,6 +15,7 @@ import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { fetchApi, getApiUrl } from '../lib/api';
 import { offlineGpsBuffer } from '../lib/offlineGpsBuffer';
+import { SoundAlertEngine } from '../lib/SoundAlertEngine';
 import type { 
   DeliveryOrder, 
   OrderStatus, 
@@ -272,6 +273,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
   },
 
   logout: async () => {
+    SoundAlertEngine.stopAlarm();
     if (activeOrdersUnsub) {
       activeOrdersUnsub();
       activeOrdersUnsub = null;
@@ -336,6 +338,14 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
           } as DeliveryOrder);
         });
 
+        // Trigger continuous alarm if new order assigned to rider, stop if none pending
+        const hasUnaccepted = list.some((o) => o.status === 'partner_assigned');
+        if (hasUnaccepted) {
+          SoundAlertEngine.startContinuousAlarm();
+        } else {
+          SoundAlertEngine.stopAlarm();
+        }
+
         set({ activeOrders: list, isOrdersLoading: false });
       }, (error) => {
         console.warn('Active orders subscription notice:', error);
@@ -346,6 +356,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     }
 
     return () => {
+      SoundAlertEngine.stopAlarm();
       if (activeOrdersUnsub) {
         activeOrdersUnsub();
         activeOrdersUnsub = null;
@@ -459,11 +470,13 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
   },
 
   acceptDelivery: async (orderId: string) => {
+    SoundAlertEngine.stopAlarm();
     try {
       const res = await fetchApi('/api/delivery/rider/orders/' + orderId + '/accept', {
         method: 'POST'
       });
       if (res.success) {
+        SoundAlertEngine.playSound('order_accepted');
         set((state) => ({
           activeOrders: state.activeOrders.map((o) => o.id === orderId ? { ...o, status: 'partner_assigned' as any } : o)
         }));
@@ -477,6 +490,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         acceptedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
+      SoundAlertEngine.playSound('order_accepted');
       return true;
     } catch {
       return false;
@@ -484,6 +498,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
   },
 
   declineDelivery: async (orderId: string) => {
+    SoundAlertEngine.stopAlarm();
     try {
       const res = await fetchApi('/api/delivery/rider/orders/' + orderId + '/decline', {
         method: 'POST'
@@ -504,6 +519,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         method: 'POST'
       });
       if (res.success) {
+        SoundAlertEngine.playSound('order_ready');
         set((state) => ({
           activeOrders: state.activeOrders.map((o) => o.id === orderId ? { ...o, status: 'out_for_delivery' } : o)
         }));
@@ -517,6 +533,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         pickedUpAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
+      SoundAlertEngine.playSound('order_ready');
       return true;
     } catch {
       return false;
@@ -538,6 +555,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
       });
 
       if (res.success) {
+        SoundAlertEngine.playSound('order_delivered');
         set((state) => ({
           activeOrders: state.activeOrders.filter((o) => o.id !== orderId)
         }));
@@ -562,6 +580,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
             completedAt: new Date().toISOString()
           }
         });
+        SoundAlertEngine.playSound('order_delivered');
         set((state) => ({
           activeOrders: state.activeOrders.filter((o) => o.id !== orderId)
         }));
