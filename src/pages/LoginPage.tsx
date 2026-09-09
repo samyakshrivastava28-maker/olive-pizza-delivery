@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
+import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signInWithCredential, signOut } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
-import { auth, db } from '../lib/firebase';
-import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
+import { auth } from '../lib/firebase';
+import { getApiUrl } from '../lib/api';
+import { useDeliveryStore } from '../store/deliveryStore';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Mail, Truck, ShieldCheck } from 'lucide-react';
 import { AppLogo } from '../components/common/AppLogo';
@@ -38,32 +39,60 @@ export default function LoginPage() {
     }
   };
 
-  const verifyRiderRole = async (userEmail: string | null, uid?: string) => {
-    if (!userEmail) return false;
-    const normalized = userEmail.toLowerCase().trim();
-    const isOwner = normalized === 'olivepizzarjn@gmail.com' || normalized === 'webhub2811@gmail.com' || normalized === 'olivepizzamaker@gmail.com';
-    if (isOwner) return true;
+  const verifyAndAuthorizeRider = async (firebaseUser: any): Promise<boolean> => {
+    const userEmail = (firebaseUser.email || '').toLowerCase().trim();
+    const isOwner = userEmail === 'olivepizzarjn@gmail.com' || userEmail === 'webhub2811@gmail.com' || userEmail === 'olivepizzamaker@gmail.com';
+
+    let isAuthorized = false;
+    let denialReason = 'Your account is not registered as an authorized Olive Pizza delivery partner.';
 
     try {
-      if (uid) {
-        const docSnap = await getDoc(doc(db, 'users', uid));
-        if (docSnap.exists()) {
-          const role = docSnap.data()?.role || 'customer';
-          const allowedRoles = ['delivery_partner', 'delivery', 'developer', 'restaurant_manager', 'manager', 'owner', 'admin'];
-          return allowedRoles.includes(role);
+      const idToken = await firebaseUser.getIdToken();
+      const resp = await fetch(getApiUrl('api/auth/authorize-app'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({
+          targetApp: 'DELIVERY'
+        })
+      });
+
+      const authData = await resp.json().catch(() => null);
+
+      if (resp.ok && authData?.authorized) {
+        isAuthorized = true;
+      } else {
+        denialReason = authData?.reason || denialReason;
+        if (resp.status !== 403 && isOwner) {
+          isAuthorized = true;
         }
       }
-
-      const userDocs = await getDocs(query(collection(db, 'users'), where('email', '==', normalized))).catch(() => null);
-      let role = 'customer';
-      if (userDocs && !userDocs.empty) {
-        role = userDocs.docs[0].data()?.role || 'customer';
+    } catch (netErr) {
+      console.warn('[LoginPage] Authorization API check notice:', netErr);
+      if (isOwner) {
+        isAuthorized = true;
       }
-      const allowedRoles = ['delivery_partner', 'delivery', 'developer', 'restaurant_manager', 'manager', 'owner', 'admin'];
-      return allowedRoles.includes(role);
-    } catch {
-      return true; // fallback to allow token verification on backend
     }
+
+    if (!isAuthorized) {
+      await signOut(auth).catch(() => {});
+      localStorage.removeItem('delivery_rider_profile');
+      sessionStorage.clear();
+      useDeliveryStore.setState({
+        user: null,
+        riderProfile: null,
+        userRole: null,
+        isAuthorized: false,
+        restrictedReason: denialReason,
+        restrictedEmail: userEmail,
+        activeOrders: []
+      });
+      return false;
+    }
+
+    return true;
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -72,7 +101,7 @@ export default function LoginPage() {
 
     try {
       const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-      const isAllowed = await verifyRiderRole(cred.user.email, cred.user.uid);
+      const isAllowed = await verifyAndAuthorizeRider(cred.user);
 
       if (!isAllowed) {
         toast.error('Access denied. This app is for Olive Pizza Delivery Partners only.');
@@ -110,7 +139,7 @@ export default function LoginPage() {
         provider.setCustomParameters({ prompt: 'select_account' });
         result = await signInWithPopup(auth, provider);
       }
-      const isAllowed = await verifyRiderRole(result.user.email, result.user.uid);
+      const isAllowed = await verifyAndAuthorizeRider(result.user);
 
       if (!isAllowed) {
         toast.error('Access denied. Your Google account is not registered as a delivery partner.');

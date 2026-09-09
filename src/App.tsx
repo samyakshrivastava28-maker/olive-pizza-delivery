@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { DeliveryLayout } from './components/layout/DeliveryLayout';
@@ -10,8 +10,35 @@ import SettingsPage from './pages/SettingsPage';
 import LoginPage from './pages/LoginPage';
 import AccessDeniedPage from './pages/AccessDeniedPage';
 import DeliveryPushNotificationManager from './services/DeliveryPushNotificationManager';
+import { useDeliveryStore } from './store/deliveryStore';
 
 export default function App() {
+  const { initAuth, isAuthChecking, restrictedReason } = useDeliveryStore();
+
+  useEffect(() => {
+    const unsub = initAuth();
+    return () => unsub();
+  }, [initAuth]);
+
+  if (isAuthChecking) {
+    return (
+      <div className="min-h-screen bg-[#090E17] flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-3 border-amber-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs text-slate-400 font-medium">Verifying Delivery Partner Session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (restrictedReason) {
+    return (
+      <BrowserRouter>
+        <AccessDeniedPage />
+      </BrowserRouter>
+    );
+  }
+
   return (
     <BrowserRouter>
       <DeliveryPushNotificationManager />
