@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDeliveryStore } from '../store/deliveryStore';
 import { db } from '../lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -13,10 +14,12 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
 
 export default function DeliveryPushNotificationManager() {
+  const navigate = useNavigate();
   const { user, isAuthorized, isOnline, acceptDelivery, declineDelivery } = useDeliveryStore();
   const [showPromptBanner, setShowPromptBanner] = useState(false);
   const [urgentAssignment, setUrgentAssignment] = useState<any | null>(null);
   const isRegisteredRef = useRef(false);
+  const registeredTokenRef = useRef<string | null>(null);
 
   // Create Android Notification Channels
   const createChannels = useCallback(async () => {
@@ -94,6 +97,7 @@ export default function DeliveryPushNotificationManager() {
                 role: 'delivery'
               })
             }).catch(() => {});
+            registeredTokenRef.current = pushToken.value;
             isRegisteredRef.current = true;
           }
         });
@@ -105,6 +109,18 @@ export default function DeliveryPushNotificationManager() {
         PushNotifications.addListener('pushNotificationReceived', (notification) => {
           console.log('[Delivery PushManager] Push received in foreground:', notification);
           SoundAlertEngine.startContinuousAlarm();
+        });
+
+        PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+          console.log('[Delivery PushManager] Push notification action performed:', action);
+          SoundAlertEngine.stopAlarm();
+          const data = (action.notification?.data || {}) as Record<string, any>;
+          const orderId = data.orderId || data.order_id || data.id;
+          if (orderId) {
+            navigate(`/live-orders?orderId=${encodeURIComponent(orderId)}`);
+          } else {
+            navigate('/live-orders');
+          }
         });
 
         await PushNotifications.register();
@@ -136,6 +152,7 @@ export default function DeliveryPushNotificationManager() {
                 role: 'delivery'
               })
             });
+            registeredTokenRef.current = currentToken;
             isRegisteredRef.current = true;
           }
         }
@@ -143,7 +160,22 @@ export default function DeliveryPushNotificationManager() {
     } catch (err: any) {
       console.warn('[Delivery PushManager] Token registration warning:', err.message);
     }
-  }, [user, createChannels]);
+  }, [user, createChannels, navigate]);
+
+  // Deregister token on logout
+  useEffect(() => {
+    if (!user && isRegisteredRef.current) {
+      const token = registeredTokenRef.current;
+      if (token) {
+        fetchApi('/api/notifications/token/deregister', {
+          method: 'POST',
+          body: JSON.stringify({ token })
+        }).catch(() => {});
+      }
+      registeredTokenRef.current = null;
+      isRegisteredRef.current = false;
+    }
+  }, [user]);
 
   // 1. Check permission on Auth
   useEffect(() => {
