@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Color;
 import android.media.AudioAttributes;
 import android.net.Uri;
 import android.os.Build;
@@ -15,18 +16,21 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
 
-import com.capacitorjs.plugins.pushnotifications.MessagingService;
+import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
 
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * DeliveryMessagingService — Handles urgent delivery assignments
- * Scoped strictly to the assigned delivery partner.
+ * DeliveryMessagingService — Native FCM Handler for Olive Pizza Delivery Rider App
+ *
+ * Handles continuous order alarms, action buttons, and foreground wake-locks.
  */
-public class DeliveryMessagingService extends MessagingService {
-    private static final String TAG = "DeliveryMessaging";
+public class DeliveryMessagingService extends FirebaseMessagingService {
+    private static final String TAG = "DeliveryMessagingService";
+    private static final String CHANNEL_ID_ALERT = "olive_delivery_alarm_channel_v2";
+    private static final String CHANNEL_ID_ACTIONS = "olive_delivery_actions_v2";
 
     @Override
     public void onMessageReceived(@NonNull RemoteMessage remoteMessage) {
@@ -66,7 +70,7 @@ public class DeliveryMessagingService extends MessagingService {
                 showStandardDeliveryNotification(data);
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error handling delivery FCM message:", e);
+            Log.e(TAG, "Error handling delivery FCM message: " + e.getMessage(), e);
         } finally {
             if (wakeLock != null && wakeLock.isHeld()) {
                 wakeLock.release();
@@ -74,146 +78,140 @@ public class DeliveryMessagingService extends MessagingService {
         }
     }
 
-    private void wakeScreen(PowerManager powerManager) {
-        if (powerManager == null) return;
+    private void wakeScreen(PowerManager pm) {
         try {
-            @SuppressWarnings("deprecation")
-            PowerManager.WakeLock screenLock = powerManager.newWakeLock(
-                PowerManager.FULL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE,
-                "OliveDelivery::EmergencyScreenWakeLock"
-            );
-            screenLock.acquire(10000);
-            Log.d(TAG, "⚡ Screen woke up for delivery assignment!");
+            if (pm != null && !pm.isInteractive()) {
+                PowerManager.WakeLock screenLock = pm.newWakeLock(
+                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                    "OliveDelivery::ScreenWake"
+                );
+                screenLock.acquire(5000);
+                screenLock.release();
+            }
         } catch (Exception e) {
-            Log.w(TAG, "Could not acquire screen wake lock: " + e.getMessage());
+            Log.w(TAG, "Screen wake exception: " + e.getMessage());
         }
     }
 
     private void showDeliveryAssignmentNotification(Map<String, String> data) {
         String orderId = data.get("orderId");
         String orderNumber = data.get("orderNumber");
-        String title = data.get("title");
-        String body = data.get("body");
-        String distance = data.get("distance");
-        String eta = data.get("eta");
+        if (orderNumber == null && orderId != null) {
+            orderNumber = orderId.substring(Math.max(0, orderId.length() - 6));
+        }
 
-        if (title == null) title = "📦 New Delivery Assignment" + (distance != null ? " • " + distance : "");
-        if (body == null) body = "Order " + (orderNumber != null ? orderNumber : "") + (eta != null ? " • ETA: " + eta : "");
-
-        int notifId = orderId != null ? orderId.hashCode() : (int) (System.currentTimeMillis() & 0x7fffffff);
-        String channelId = "olive_delivery_assignment";
+        int notificationId = orderId != null ? orderId.hashCode() : (int) System.currentTimeMillis();
+        String title = data.containsKey("title") ? data.get("title") : "New Delivery Assignment #" + (orderNumber != null ? orderNumber : "");
+        String body = data.containsKey("body") ? data.get("body") : "Pickup at Olive Pizza Central Hub";
 
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        ensureChannelExists(nm, channelId, "Olive Delivery Assignments", true, "delivery_chime");
+        if (nm == null) return;
 
-        Intent contentIntent = new Intent(this, MainActivity.class);
-        contentIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        if (orderId != null) {
-            contentIntent.putExtra("orderId", orderId);
-            contentIntent.putExtra("url", "/live-orders?orderId=" + orderId);
+        createNotificationChannels(nm);
+
+        int pendingFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE : PendingIntent.FLAG_UPDATE_CURRENT;
+
+        // Full Screen Alert Activity
+        Intent fullScreenIntent = new Intent(this, UrgentDeliveryAlertActivity.class);
+        fullScreenIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        for (Map.Entry<String, String> entry : data.entrySet()) {
+            fullScreenIntent.putExtra(entry.getKey(), entry.getValue());
         }
-        PendingIntent contentPendingIntent = PendingIntent.getActivity(
-            this,
-            notifId,
-            contentIntent,
-            PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
-        );
+        PendingIntent fullScreenPi = PendingIntent.getActivity(this, notificationId + 100, fullScreenIntent, pendingFlags);
 
-        Uri soundUri = resolveSoundUri("delivery_chime");
+        // Content Tap
+        Intent contentIntent = new Intent(this, MainActivity.class);
+        contentIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        contentIntent.putExtra("orderId", orderId);
+        PendingIntent contentPi = PendingIntent.getActivity(this, notificationId, contentIntent, pendingFlags);
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(getSmallIconResId())
+        // Action: Accept Delivery
+        Intent acceptIntent = new Intent(this, NotificationActionReceiver.class);
+        acceptIntent.setAction("in.olivepizza.delivery.ACTION_ACCEPT_DELIVERY");
+        acceptIntent.putExtra("action", "accept_delivery");
+        acceptIntent.putExtra("orderId", orderId);
+        acceptIntent.putExtra("notificationId", notificationId);
+        acceptIntent.putExtra("orderNumber", orderNumber);
+        acceptIntent.putExtra("customerName", data.get("customerName"));
+        acceptIntent.putExtra("deliveryAddress", data.get("deliveryAddress"));
+        PendingIntent acceptPi = PendingIntent.getBroadcast(this, notificationId + 1, acceptIntent, pendingFlags);
+
+        // Action: Decline Delivery
+        Intent declineIntent = new Intent(this, NotificationActionReceiver.class);
+        declineIntent.setAction("in.olivepizza.delivery.ACTION_DECLINE_DELIVERY");
+        declineIntent.putExtra("action", "decline_delivery");
+        declineIntent.putExtra("orderId", orderId);
+        declineIntent.putExtra("notificationId", notificationId);
+        PendingIntent declinePi = PendingIntent.getBroadcast(this, notificationId + 2, declineIntent, pendingFlags);
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID_ALERT)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
-            .setContentIntent(contentPendingIntent)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setAutoCancel(true)
-            .setColor(0xFFF59E0B)
-            .setSound(soundUri)
-            .addAction(0, "ACCEPT DELIVERY", contentPendingIntent);
+            .setContentIntent(contentPi)
+            .setFullScreenIntent(fullScreenPi, true)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .addAction(android.R.drawable.ic_menu_send, "ACCEPT", acceptPi)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "DECLINE", declinePi);
 
-        Notification notification = builder.build();
-        notification.flags |= Notification.FLAG_INSISTENT;
-
-        if (nm != null) {
-            nm.notify(notifId, notification);
-            Log.i(TAG, "📦 Delivery assignment notification posted: id=" + notifId);
-        }
+        nm.notify(notificationId, builder.build());
     }
 
     private void showStandardDeliveryNotification(Map<String, String> data) {
-        String title = data.get("title") != null ? data.get("title") : "Olive Pizza Delivery";
-        String body = data.get("body") != null ? data.get("body") : "Delivery update received.";
-        String channelId = "olive_delivery_updates";
+        String orderId = data.get("orderId");
+        int notificationId = orderId != null ? orderId.hashCode() : (int) System.currentTimeMillis();
+        String title = data.getOrDefault("title", "Olive Pizza Delivery");
+        String body = data.getOrDefault("body", "Order update received.");
 
-        int notifId = (int) (System.currentTimeMillis() & 0x7fffffff);
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        ensureChannelExists(nm, channelId, "Olive Delivery Updates", false, "default");
+        if (nm == null) return;
+
+        createNotificationChannels(nm);
+
+        int pendingFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE : PendingIntent.FLAG_UPDATE_CURRENT;
 
         Intent contentIntent = new Intent(this, MainActivity.class);
-        contentIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        PendingIntent contentPendingIntent = PendingIntent.getActivity(
-            this,
-            notifId,
-            contentIntent,
-            PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
-        );
+        contentIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        contentIntent.putExtra("orderId", orderId);
+        PendingIntent contentPi = PendingIntent.getActivity(this, notificationId, contentIntent, pendingFlags);
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(getSmallIconResId())
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID_ACTIONS)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(title)
             .setContentText(body)
-            .setContentIntent(contentPendingIntent)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true);
+            .setContentIntent(contentPi)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH);
 
-        if (nm != null) nm.notify(notifId, builder.build());
+        nm.notify(notificationId, builder.build());
     }
 
-    private void ensureChannelExists(NotificationManager nm, String channelId, String name, boolean isAlarm, String soundName) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || nm == null) return;
-        if (nm.getNotificationChannel(channelId) != null) return;
+    private void createNotificationChannels(NotificationManager nm) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // Alarm Channel
+            NotificationChannel alertChannel = new NotificationChannel(
+                CHANNEL_ID_ALERT,
+                "Delivery Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            );
+            alertChannel.setDescription("Urgent delivery assignment alerts with sound");
+            alertChannel.enableVibration(true);
+            alertChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+            nm.createNotificationChannel(alertChannel);
 
-        int importance = isAlarm ? NotificationManager.IMPORTANCE_MAX : NotificationManager.IMPORTANCE_HIGH;
-        NotificationChannel channel = new NotificationChannel(channelId, name, importance);
-        channel.enableVibration(true);
-        channel.setShowBadge(true);
-        channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-
-        Uri soundUri = resolveSoundUri(soundName);
-        AudioAttributes audioAttributes = new AudioAttributes.Builder()
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .setUsage(isAlarm ? AudioAttributes.USAGE_ALARM : AudioAttributes.USAGE_NOTIFICATION)
-            .build();
-        channel.setSound(soundUri, audioAttributes);
-
-        if (isAlarm && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            try {
-                channel.setBypassDnd(true);
-            } catch (Exception ignored) {}
+            // Actions Channel
+            NotificationChannel actionsChannel = new NotificationChannel(
+                CHANNEL_ID_ACTIONS,
+                "Delivery Actions",
+                NotificationManager.IMPORTANCE_HIGH
+            );
+            actionsChannel.setDescription("Actionable notifications for active orders");
+            actionsChannel.enableVibration(true);
+            nm.createNotificationChannel(actionsChannel);
         }
-
-        nm.createNotificationChannel(channel);
-    }
-
-    private Uri resolveSoundUri(String soundName) {
-        if (soundName != null && !soundName.isEmpty() && !"default".equals(soundName)) {
-            String cleanName = soundName.contains(".") ? soundName.split("\\.")[0] : soundName;
-            int resId = getResources().getIdentifier(cleanName, "raw", getPackageName());
-            if (resId != 0) {
-                return Uri.parse("android.resource://" + getPackageName() + "/" + resId);
-            }
-        }
-        return android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION);
-    }
-
-    private int getSmallIconResId() {
-        int resId = getResources().getIdentifier("ic_stat_icon_config_sample", "drawable", getPackageName());
-        if (resId == 0) resId = getApplicationInfo().icon;
-        if (resId == 0) resId = android.R.drawable.ic_dialog_info;
-        return resId;
     }
 }

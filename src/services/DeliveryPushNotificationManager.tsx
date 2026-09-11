@@ -26,6 +26,15 @@ export default function DeliveryPushNotificationManager() {
     if (!Capacitor.isNativePlatform()) return;
     try {
       await PushNotifications.createChannel({
+        id: 'olive_delivery_alarm_v3',
+        name: 'Delivery Alarm (v3)',
+        description: 'Urgent delivery assignment alarm. Rings continuously and wakes screen.',
+        importance: 5,
+        visibility: 1,
+        vibration: true,
+        sound: 'delivery_chime',
+      });
+      await PushNotifications.createChannel({
         id: 'olive_delivery_assignment',
         name: 'Delivery Assignments',
         description: 'Urgent delivery assignment alerts with ringing. Wakes screen.',

@@ -30,10 +30,20 @@
 
         </activity>
 
+        <!-- Full-Screen Native Urgent Delivery Alert Activity -->
+        <activity
+            android:name=".UrgentDeliveryAlertActivity"
+            android:label="Urgent Delivery Alert"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="true"
+            android:exported="false" />
 
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="olive_delivery_assignment" />
+            android:value="olive_delivery_alarm_v3" />
 
         <!-- Remove default Capacitor MessagingService to allow custom background wakeups -->
         <service
@@ -60,6 +70,16 @@
                 <action android:name="action_out_for_delivery" />
                 <action android:name="action_arrived_at_customer" />
                 <action android:name="action_complete" />
+                <action android:name="in.olivepizza.delivery.ACTION_ACCEPT_DELIVERY" />
+                <action android:name="in.olivepizza.delivery.ACTION_DECLINE_DELIVERY" />
+                <action android:name="in.olivepizza.delivery.ACTION_PICKED_UP" />
+                <action android:name="in.olivepizza.delivery.ACTION_OUT_FOR_DELIVERY" />
+                <action android:name="in.olivepizza.delivery.ACTION_DELIVERED" />
+                <action android:name="ACCEPT_DELIVERY" />
+                <action android:name="DECLINE_DELIVERY" />
+                <action android:name="PICKED_UP" />
+                <action android:name="OUT_FOR_DELIVERY" />
+                <action android:name="DELIVERED" />
             </intent-filter>
         </receiver>
 
