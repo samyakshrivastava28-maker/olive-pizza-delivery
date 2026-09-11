@@ -42,7 +42,17 @@ import java.net.URL;
  */
 public class UrgentDeliveryAlertActivity extends AppCompatActivity {
     private static final String TAG = "UrgentDeliveryAlert";
-    private static final String BACKEND_URL = "https://olivepizza-owner.onrender.com/api/notifications/action";
+
+    private String getBackendActionUrl() {
+        try {
+            int resId = getResources().getIdentifier("backend_base_url", "string", getPackageName());
+            if (resId != 0) {
+                String val = getString(resId);
+                if (val != null && !val.isEmpty()) return val + "/api/notifications/action";
+            }
+        } catch (Exception ignored) {}
+        return "https://olivepizza-owner.onrender.com/api/notifications/action";
+    }
 
     private String orderId;
     private String orderNumber;
@@ -204,6 +214,9 @@ public class UrgentDeliveryAlertActivity extends AppCompatActivity {
             fallbackRingtone = null;
         }
 
+        // Stop background alarm service
+        UrgentDeliveryAlertService.stopAlert(this, orderId);
+
         // Cancel notification shade item
         if (notificationId != -1) {
             NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
@@ -238,7 +251,7 @@ public class UrgentDeliveryAlertActivity extends AppCompatActivity {
     private void executeBackendAction(String action, String token) {
         new Thread(() -> {
             try {
-                URL url = new URL(BACKEND_URL);
+                URL url = new URL(getBackendActionUrl());
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json");

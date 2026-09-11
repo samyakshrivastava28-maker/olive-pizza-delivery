@@ -155,12 +155,21 @@ export default function LiveOrdersPage() {
 
               {/* Quick Actions (Call & Maps) */}
               <div className="grid grid-cols-2 gap-2">
-                <a
-                  href={'tel:' + (order.contactPhone || '9179944445')}
-                  className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
-                >
-                  <Phone className="w-3.5 h-3.5 text-emerald-400" /> Call Customer
-                </a>
+                {order.contactPhone ? (
+                  <a
+                    href={'tel:' + order.contactPhone}
+                    className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <Phone className="w-3.5 h-3.5 text-emerald-400" /> Call Customer
+                  </a>
+                ) : (
+                  <button
+                    disabled
+                    className="py-2.5 px-3 rounded-xl bg-slate-800/50 text-slate-500 font-bold text-xs flex items-center justify-center gap-1.5 cursor-not-allowed"
+                  >
+                    <Phone className="w-3.5 h-3.5 text-slate-600" /> Phone Unavailable
+                  </button>
+                )}
 
                 <a
                   href={'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(addressText)}

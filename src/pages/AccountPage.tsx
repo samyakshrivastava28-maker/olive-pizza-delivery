@@ -97,14 +97,14 @@ export default function AccountPage() {
           <span className="text-slate-400 flex items-center gap-2">
             <Truck className="w-3.5 h-3.5 text-slate-500" /> Vehicle
           </span>
-          <strong className="text-white">{riderProfile?.vehicleNumber || 'CG-08-AB-1234'}</strong>
+          <strong className="text-white">{riderProfile?.vehicleNumber || 'Unavailable'}</strong>
         </div>
 
         <div className="flex items-center justify-between py-1">
           <span className="text-slate-400 flex items-center gap-2">
             <MapPin className="w-3.5 h-3.5 text-slate-500" /> Assigned Branch
           </span>
-          <strong className="text-amber-400">{riderProfile?.branchName}</strong>
+          <strong className="text-amber-400">{riderProfile?.branchName || 'Unavailable'}</strong>
         </div>
 
         <div className="flex items-center justify-between py-1">
@@ -112,7 +112,7 @@ export default function AccountPage() {
             <Calendar className="w-3.5 h-3.5 text-slate-500" /> Member Since
           </span>
           <span className="text-slate-300 font-mono">
-            {new Date(riderProfile?.joiningDate || '2026-01-15').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
+            {riderProfile?.joiningDate ? new Date(riderProfile.joiningDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : 'Unavailable'}
           </span>
         </div>
       </div>
@@ -124,14 +124,25 @@ export default function AccountPage() {
         <div className="flex items-center justify-between">
           <div>
             <strong className="text-white block">Olive Pizza Dispatch Support</strong>
-            <span className="text-[11px] text-slate-400">+91 91799 44445</span>
+            <span className="text-[11px] text-slate-400">
+              {riderProfile?.branchPhone || riderProfile?.emergencyContact?.phone || 'Unavailable'}
+            </span>
           </div>
-          <a
-            href="tel:9179944445"
-            className="px-3 py-1.5 rounded-xl bg-amber-500 text-black font-bold text-xs"
-          >
-            Call
-          </a>
+          {(riderProfile?.branchPhone || riderProfile?.emergencyContact?.phone) ? (
+            <a
+              href={`tel:${riderProfile.branchPhone || riderProfile.emergencyContact?.phone}`}
+              className="px-3 py-1.5 rounded-xl bg-amber-500 text-black font-bold text-xs"
+            >
+              Call
+            </a>
+          ) : (
+            <button
+              disabled
+              className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-500 font-bold text-xs cursor-not-allowed"
+            >
+              Call
+            </button>
+          )}
         </div>
       </div>
     </div>

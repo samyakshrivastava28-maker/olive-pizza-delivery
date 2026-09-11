@@ -36,7 +36,17 @@ import java.util.concurrent.TimeUnit;
  */
 public class DeliveryActionWorker extends Worker {
     private static final String TAG = "DeliveryActionWorker";
-    private static final String BACKEND_BASE_URL = "https://olivepizza-owner.onrender.com";
+
+    private String getBackendBaseUrl() {
+        try {
+            int resId = getApplicationContext().getResources().getIdentifier("backend_base_url", "string", getApplicationContext().getPackageName());
+            if (resId != 0) {
+                String val = getApplicationContext().getString(resId);
+                if (val != null && !val.isEmpty()) return val;
+            }
+        } catch (Exception ignored) {}
+        return "https://olivepizza-owner.onrender.com";
+    }
 
     public static final String KEY_ORDER_ID = "orderId";
     public static final String KEY_ACTION = "action";
@@ -86,7 +96,7 @@ public class DeliveryActionWorker extends Worker {
             }
 
             // 2. Perform Backend HTTP Request
-            String endpoint = BACKEND_BASE_URL + "/api/notifications/action";
+            String endpoint = getBackendBaseUrl() + "/api/notifications/action";
             URL url = new URL(endpoint);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");

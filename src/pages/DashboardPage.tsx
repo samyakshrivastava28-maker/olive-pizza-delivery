@@ -160,39 +160,45 @@ export default function DashboardPage() {
           <span className="text-[10px] text-slate-400 font-mono">Archived Ledgers</span>
         </div>
 
-        <div className="space-y-2.5">
-          {monthlyReports.map((report: MonthlyDeliverySummary) => (
-            <div
-              key={report.id}
-              className="p-3.5 rounded-xl bg-[#131E35] border border-slate-800 space-y-2"
-            >
-              <div className="flex items-center justify-between">
-                <strong className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-amber-400" /> {report.monthName}
-                </strong>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                  {report.onTimeRatePercent}% On-Time
-                </span>
-              </div>
+        {monthlyReports.length > 0 ? (
+          <div className="space-y-2.5">
+            {monthlyReports.map((report: MonthlyDeliverySummary) => (
+              <div
+                key={report.id}
+                className="p-3.5 rounded-xl bg-[#131E35] border border-slate-800 space-y-2"
+              >
+                <div className="flex items-center justify-between">
+                  <strong className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-amber-400" /> {report.monthName}
+                  </strong>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    {report.onTimeRatePercent}% On-Time
+                  </span>
+                </div>
 
-              <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-800 text-[11px]">
-                <div>
-                  <span className="text-slate-400 block text-[10px]">Deliveries</span>
-                  <strong className="text-white font-extrabold">{report.completedDeliveries}</strong>
-                  <span className="text-slate-500 text-[9px]"> / {report.totalDeliveries}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px]">Distance</span>
-                  <strong className="text-white font-extrabold">{report.totalDistanceKm} km</strong>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px]">Earnings</span>
-                  <strong className="text-amber-400 font-extrabold">₹{report.totalEarnings}</strong>
+                <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-800 text-[11px]">
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">Deliveries</span>
+                    <strong className="text-white font-extrabold">{report.completedDeliveries}</strong>
+                    <span className="text-slate-500 text-[9px]"> / {report.totalDeliveries}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">Distance</span>
+                    <strong className="text-white font-extrabold">{report.totalDistanceKm} km</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">Earnings</span>
+                    <strong className="text-amber-400 font-extrabold">₹{report.totalEarnings}</strong>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-6 text-center text-xs text-slate-500 rounded-xl bg-[#131E35]/50 border border-slate-800/60">
+            No archived monthly delivery reports available yet.
+          </div>
+        )}
       </div>
     </div>
   );

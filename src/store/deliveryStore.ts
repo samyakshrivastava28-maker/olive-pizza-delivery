@@ -70,45 +70,14 @@ interface DeliveryState {
 let activeOrdersUnsub: Unsubscribe | null = null;
 
 const DEFAULT_TODAY_STATS: RiderShiftStats = {
-  assigned: 6,
-  completed: 5,
-  active: 1,
+  assigned: 0,
+  completed: 0,
+  active: 0,
   cancelled: 0,
-  totalDistanceKm: 28.4,
-  averageDeliveryTimeMin: 22,
-  earnings: 240,
+  totalDistanceKm: 0,
+  averageDeliveryTimeMin: 0,
+  earnings: 0,
   date: new Date().toISOString().split('T')[0]
-};
-
-const DEFAULT_RIDER_PROFILE: RiderProfile = {
-  uid: 'rider_default',
-  id: 'rider_default',
-  name: 'Rider Partner',
-  email: 'rider@olivepizza.in',
-  phone: '+91 91799 44445',
-  role: 'delivery_partner',
-  vehicleType: 'Motorcycle / Scooter',
-  vehicleNumber: 'CG-08-AB-1234',
-  organizationId: 'org_olive_pizza',
-  franchiseId: 'fra_primary',
-  branchId: 'main_branch',
-  branchName: 'Olive Pizza — Rajnandgaon (Main Branch)',
-  branchAddress: 'Dongargaon Rd, near Saraswati school, Gokul Nagar, Rajnandgaon, CG 491441',
-  branchPhone: '+91 91799 44445',
-  isOnline: true,
-  workingSchedule: [
-    { day: 'Monday', hours: '12:00 PM - 11:00 PM', isOff: false },
-    { day: 'Tuesday', hours: '12:00 PM - 11:00 PM', isOff: false },
-    { day: 'Wednesday', hours: '12:00 PM - 11:00 PM', isOff: false },
-    { day: 'Thursday', hours: '12:00 PM - 11:00 PM', isOff: false },
-    { day: 'Friday', hours: '12:00 PM - 11:30 PM', isOff: false },
-    { day: 'Saturday', hours: '12:00 PM - 11:30 PM', isOff: false },
-    { day: 'Sunday', hours: '12:00 PM - 11:30 PM', isOff: false }
-  ],
-  joiningDate: '2026-01-15T10:00:00.000Z',
-  emergencyContact: { name: 'Restaurant Operations Manager', phone: '+91 91799 44445' },
-  rating: 4.9,
-  totalDeliveriesLifetime: 842
 };
 
 export const useDeliveryStore = create<DeliveryState>((set, get) => ({
@@ -131,7 +100,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
   currentMonthHistory: [],
   isHistoryLoading: false,
   
-  currentLocation: { lat: 21.0810244, lng: 81.0123793 },
+  currentLocation: null,
   isGpsActive: false,
 
   initAuth: () => {
@@ -172,18 +141,28 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         const authData = await resp.json().catch(() => null);
 
         if (resp.ok && authData?.authorized) {
-          const u = authData.user;
+          const u = authData.user || {};
           const profile: RiderProfile = {
-            ...DEFAULT_RIDER_PROFILE,
             uid: firebaseUser.uid,
             id: firebaseUser.uid,
             name: u.name || firebaseUser.displayName || emailLower.split('@')[0] || 'Delivery Partner',
             email: firebaseUser.email || '',
-            phone: u.phone || '+91 91799 44445',
+            phone: u.phone || u.phoneNumber || '',
             role: u.role || 'delivery_partner',
+            vehicleType: u.vehicleType || 'Vehicle',
+            vehicleNumber: u.vehicleNumber || '',
+            organizationId: u.organizationId || 'org_olive_pizza',
+            franchiseId: u.franchiseId || 'fra_primary',
             branchId: u.branchId || 'main_branch',
-            branchName: u.branchName || 'Olive Pizza — Rajnandgaon (Main Branch)',
-            isOnline: true
+            branchName: u.branchName || 'Olive Pizza',
+            branchAddress: u.branchAddress || '',
+            branchPhone: u.branchPhone || '',
+            isOnline: true,
+            workingSchedule: u.workingSchedule || [],
+            joiningDate: u.joiningDate || u.createdAt || new Date().toISOString(),
+            emergencyContact: u.emergencyContact || { name: 'Operations Support', phone: u.branchPhone || '' },
+            rating: u.rating || 5.0,
+            totalDeliveriesLifetime: u.totalDeliveriesLifetime || 0
           };
 
           set({
@@ -202,7 +181,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
           get().fetchMonthlyReports();
         } else {
           // Unauthorized account — wipe session and enforce immediate sign out
-          const denialReason = authData?.reason || 'This account is not authorized to use this Olive Pizza application.';
+          const denialReason = authData?.reason || 'Access Denied: This account is not authorized to use the Delivery application.';
           console.warn('[DeliveryStore] Access restricted for account:', emailLower, denialReason);
 
           await signOut(auth).catch(() => {});
@@ -222,44 +201,17 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         }
       } catch (err: any) {
         console.error('[DeliveryStore] Auth handshake network error:', err);
-
-        const isMasterOwner = emailLower === 'olivepizzarjn@gmail.com' || emailLower === 'webhub2811@gmail.com' || emailLower === 'olivepizzamaker@gmail.com';
-        if (isMasterOwner) {
-          const profile: RiderProfile = {
-            ...DEFAULT_RIDER_PROFILE,
-            uid: firebaseUser.uid,
-            id: firebaseUser.uid,
-            name: 'Platform Owner',
-            email: emailLower,
-            role: 'owner',
-            isOnline: true
-          };
-          set({
-            user: firebaseUser,
-            riderProfile: profile,
-            userRole: 'owner',
-            isOnline: true,
-            isAuthChecking: false,
-            isAuthorized: true,
-            restrictedReason: null,
-            restrictedEmail: null
-          });
-          get().subscribeToActiveOrders(firebaseUser.uid);
-          get().fetchTodayStats();
-          get().fetchMonthlyReports();
-        } else {
-          await signOut(auth).catch(() => {});
-          set({
-            user: null,
-            riderProfile: null,
-            userRole: null,
-            isAuthChecking: false,
-            isAuthorized: false,
-            restrictedReason: 'This account is not authorized to use this Olive Pizza application.',
-            restrictedEmail: emailLower,
-            activeOrders: []
-          });
-        }
+        await signOut(auth).catch(() => {});
+        set({
+          user: null,
+          riderProfile: null,
+          userRole: null,
+          isAuthChecking: false,
+          isAuthorized: false,
+          restrictedReason: 'Access Denied: Server authorization unreachable or account unauthorized.',
+          restrictedEmail: emailLower,
+          activeOrders: []
+        });
       }
     });
 
@@ -301,13 +253,6 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         body: JSON.stringify({ isOnline: next })
       });
     } catch {}
-
-    if (uid) {
-      try {
-        await updateDoc(doc(db, 'users', uid), { isOnline: next, onlineStatusUpdatedAt: new Date().toISOString() }).catch(() => {});
-        await updateDoc(doc(db, 'delivery_partners', uid), { isOnline: next, onlineStatusUpdatedAt: new Date().toISOString() }).catch(() => {});
-      } catch {}
-    }
 
     return true;
   },
@@ -376,67 +321,14 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
   fetchMonthlyReports: async () => {
     try {
       const res = await fetchApi('/api/delivery/rider/monthly-reports');
-      if (res.success && res.reports) {
+      if (res.success && Array.isArray(res.reports)) {
         set({ monthlyReports: res.reports });
       } else {
-        const defReports: MonthlyDeliverySummary[] = [
-          {
-            id: 'sum_aug_2026',
-            riderId: get().user?.uid || 'rider',
-            monthKey: '2026-08',
-            year: 2026,
-            month: 8,
-            monthName: 'August 2026 (Current)',
-            totalDeliveries: 42,
-            completedDeliveries: 40,
-            cancelledDeliveries: 1,
-            declinedDeliveries: 1,
-            totalDistanceKm: 148.2,
-            averageDeliveryTimeMin: 21,
-            totalEarnings: 1680,
-            onTimeRatePercent: 98,
-            generatedAt: new Date().toISOString()
-          },
-          {
-            id: 'sum_jul_2026',
-            riderId: get().user?.uid || 'rider',
-            monthKey: '2026-07',
-            year: 2026,
-            month: 7,
-            monthName: 'July 2026',
-            totalDeliveries: 142,
-            completedDeliveries: 138,
-            cancelledDeliveries: 2,
-            declinedDeliveries: 2,
-            totalDistanceKm: 486.5,
-            averageDeliveryTimeMin: 22,
-            totalEarnings: 5520,
-            onTimeRatePercent: 97,
-            generatedAt: '2026-08-01T00:00:00.000Z',
-            isPurgeEligible: true
-          },
-          {
-            id: 'sum_jun_2026',
-            riderId: get().user?.uid || 'rider',
-            monthKey: '2026-06',
-            year: 2026,
-            month: 6,
-            monthName: 'June 2026',
-            totalDeliveries: 136,
-            completedDeliveries: 132,
-            cancelledDeliveries: 3,
-            declinedDeliveries: 1,
-            totalDistanceKm: 462.0,
-            averageDeliveryTimeMin: 23,
-            totalEarnings: 5280,
-            onTimeRatePercent: 97,
-            generatedAt: '2026-07-01T00:00:00.000Z',
-            isPurgeEligible: true
-          }
-        ];
-        set({ monthlyReports: defReports });
+        set({ monthlyReports: [] });
       }
-    } catch {}
+    } catch {
+      set({ monthlyReports: [] });
+    }
   },
 
   fetchCurrentMonthHistory: async () => {
@@ -465,7 +357,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
 
       set({ currentMonthHistory: [], isHistoryLoading: false });
     } catch {
-      set({ isHistoryLoading: false });
+      set({ currentMonthHistory: [], isHistoryLoading: false });
     }
   },
 
@@ -482,16 +374,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         }));
         return true;
       }
-    } catch {}
-
-    try {
-      await updateDoc(doc(db, 'orders', orderId), {
-        status: 'partner_assigned',
-        acceptedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-      SoundAlertEngine.playSound('order_accepted');
-      return true;
+      return false;
     } catch {
       return false;
     }
@@ -525,16 +408,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         }));
         return true;
       }
-    } catch {}
-
-    try {
-      await updateDoc(doc(db, 'orders', orderId), {
-        status: 'out_for_delivery',
-        pickedUpAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-      SoundAlertEngine.playSound('order_ready');
-      return true;
+      return false;
     } catch {
       return false;
     }
@@ -566,28 +440,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         return { success: false, error: res.error || 'Failed to complete delivery' };
       }
     } catch (err: any) {
-      try {
-        await updateDoc(doc(db, 'orders', orderId), {
-          status: 'delivered',
-          deliveredAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          proofOfDelivery: {
-            proofImageUrl: proof?.proofImageUrl || null,
-            signatureUrl: proof?.signatureUrl || null,
-            notes: proof?.notes || 'Delivered to customer',
-            completedLat: loc?.lat || null,
-            completedLng: loc?.lng || null,
-            completedAt: new Date().toISOString()
-          }
-        });
-        SoundAlertEngine.playSound('order_delivered');
-        set((state) => ({
-          activeOrders: state.activeOrders.filter((o) => o.id !== orderId)
-        }));
-        return { success: true };
-      } catch (dbErr: any) {
-        return { success: false, error: dbErr?.message || err?.message };
-      }
+      return { success: false, error: err?.message || 'Failed to complete delivery' };
     }
   },
 

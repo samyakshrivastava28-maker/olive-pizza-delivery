@@ -76,6 +76,9 @@ public class NotificationActionReceiver extends BroadcastReceiver {
 
         String canonicalAction = normalizeAction(rawAction);
 
+        // Immediately stop continuous alarm looping upon rider action interaction
+        UrgentDeliveryAlertService.stopAlert(context, orderId);
+
         // Immediate Optimistic UI Feedback in Notification Shade
         showOptimisticFeedback(context, notificationId, canonicalAction, orderNumber);
 

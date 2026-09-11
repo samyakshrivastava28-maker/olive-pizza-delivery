@@ -60,12 +60,22 @@ public class DeliveryMessagingService extends FirebaseMessagingService {
             if ("stop_alert".equalsIgnoreCase(action)) {
                 String orderId = data.get("orderId");
                 if (orderId != null) {
+                    UrgentDeliveryAlertService.stopAlert(this, orderId);
                     NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
                     if (nm != null) nm.cancel(orderId.hashCode());
                 }
             } else if (isAssignment) {
                 wakeScreen(powerManager);
-                showDeliveryAssignmentNotification(data);
+                String orderId = data.get("orderId");
+                String orderNumber = data.get("orderNumber");
+                if (orderNumber == null && orderId != null) {
+                    orderNumber = orderId.substring(Math.max(0, orderId.length() - 6));
+                }
+                String customerName = data.get("customerName");
+                String deliveryAddress = data.get("deliveryAddress");
+
+                // Start continuous foreground looping alarm service (single order instance)
+                UrgentDeliveryAlertService.startAlert(this, orderId, orderNumber, customerName, deliveryAddress);
             } else {
                 showStandardDeliveryNotification(data);
             }

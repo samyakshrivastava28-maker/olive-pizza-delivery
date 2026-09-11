@@ -44,7 +44,7 @@ export default function DeliveryHistoryPage() {
             <History className="w-5 h-5 text-amber-400" /> Delivery History
           </h1>
           <span className="text-xs text-amber-400 font-bold">
-            August 2026 (Current Calendar Month)
+            {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} (Current Calendar Month)
           </span>
         </div>
         <span className="text-xs text-slate-400 font-mono">
@@ -127,7 +127,10 @@ export default function DeliveryHistoryPage() {
                       ? new Date(order.deliveredAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
                       : new Date(order.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
                   </span>
-                  <span>{order.deliveryDistanceKm || 3.5} km • {order.deliveryDurationMin || 22} min</span>
+                  <span>
+                    {order.deliveryDistanceKm ? `${order.deliveryDistanceKm} km` : ''} 
+                    {order.deliveryDurationMin ? ` • ${order.deliveryDurationMin} min` : ''}
+                  </span>
                 </div>
               </div>
             );
