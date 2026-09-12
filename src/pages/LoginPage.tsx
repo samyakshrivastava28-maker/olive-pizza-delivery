@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signInWithCredential, signOut } from 'firebase/auth';
+import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signInWithCredential, signOut, sendEmailVerification } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 import { auth } from '../lib/firebase';
 import { getApiUrl } from '../lib/api';
 import { useDeliveryStore } from '../store/deliveryStore';
 import { useNavigate } from 'react-router-dom';
-import { Lock, Mail, Truck, ShieldCheck } from 'lucide-react';
+import { Lock, Mail, Truck, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { AppLogo } from '../components/common/AppLogo';
 import toast from 'react-hot-toast';
 import { requestPostLoginNotificationPermissions } from '../services/notificationPermissionService';
@@ -15,6 +15,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [unverifiedEmailUser, setUnverifiedEmailUser] = useState<any>(null);
+  const [resendingEmail, setResendingEmail] = useState(false);
   const navigate = useNavigate();
 
   const formatAuthError = (err: any) => {
@@ -39,9 +41,29 @@ export default function LoginPage() {
     }
   };
 
+  const handleResendVerification = async () => {
+    if (!unverifiedEmailUser) return;
+    setResendingEmail(true);
+    try {
+      await sendEmailVerification(unverifiedEmailUser);
+      toast.success('Verification email resent! Please check your inbox.');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to resend verification email.');
+    } finally {
+      setResendingEmail(false);
+    }
+  };
+
   const verifyAndAuthorizeRider = async (firebaseUser: any): Promise<boolean> => {
     const userEmail = (firebaseUser.email || '').toLowerCase().trim();
-    const isOwner = userEmail === 'olivepizzarjn@gmail.com' || userEmail === 'webhub2811@gmail.com' || userEmail === 'olivepizzamaker@gmail.com';
+
+    // 1. Mandatory Email Verification Gate
+    if (!firebaseUser.emailVerified) {
+      setUnverifiedEmailUser(firebaseUser);
+      await signOut(auth).catch(() => {});
+      toast.error('Please verify your email before logging in as a Delivery Partner.');
+      return false;
+    }
 
     let isAuthorized = false;
     let denialReason = 'Your account is not registered as an authorized Olive Pizza delivery partner.';
@@ -65,15 +87,9 @@ export default function LoginPage() {
         isAuthorized = true;
       } else {
         denialReason = authData?.reason || denialReason;
-        if (resp.status !== 403 && isOwner) {
-          isAuthorized = true;
-        }
       }
     } catch (netErr) {
       console.warn('[LoginPage] Authorization API check notice:', netErr);
-      if (isOwner) {
-        isAuthorized = true;
-      }
     }
 
     if (!isAuthorized) {
@@ -98,6 +114,7 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setUnverifiedEmailUser(null);
 
     try {
       const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
@@ -203,6 +220,29 @@ export default function LoginPage() {
           <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">or email</span>
           <div className="flex-1 h-px bg-slate-800" />
         </div>
+
+        {/* Unverified Email Alert */}
+        {unverifiedEmailUser && (
+          <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs space-y-2">
+            <div className="flex items-start gap-2 text-amber-300">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <strong className="font-bold block">Email Verification Required</strong>
+                <span className="text-[11px] text-slate-300">
+                  Please verify your email ({unverifiedEmailUser.email}) to activate rider dispatch access.
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={resendingEmail}
+              onClick={handleResendVerification}
+              className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-black rounded-xl font-bold text-[11px] transition disabled:opacity-50"
+            >
+              {resendingEmail ? 'Resending...' : 'Resend Verification Email'}
+            </button>
+          </div>
+        )}
 
         {/* Email & Password Form */}
         <form onSubmit={handleLogin} className="space-y-3.5 text-xs">

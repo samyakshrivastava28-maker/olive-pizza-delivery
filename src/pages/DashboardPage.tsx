@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Package, 
   CheckCircle2, 
@@ -10,7 +10,8 @@ import {
   AlertTriangle,
   ChevronRight,
   RefreshCw,
-  Navigation
+  Navigation,
+  AlertCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useDeliveryStore } from '../store/deliveryStore';
@@ -18,7 +19,9 @@ import type { MonthlyDeliverySummary } from '../types/delivery';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
+  const [dismissVehicleReminder, setDismissVehicleReminder] = useState(false);
   const { 
+    riderProfile,
     todayStats, 
     monthlyReports, 
     activeOrders, 
@@ -35,6 +38,27 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4">
+      {/* Non-blocking Vehicle Number Reminder Banner */}
+      {!dismissVehicleReminder && !riderProfile?.vehicleNumber && (
+        <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+            <div>
+              <strong className="text-white font-bold block">Vehicle Details Pending</strong>
+              <span className="text-[11px] text-slate-400">
+                Vehicle registration number is missing. You can still deliver orders, but please inform your restaurant manager to complete your rider profile.
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={() => setDismissVehicleReminder(true)}
+            className="text-[11px] text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-800/80 shrink-0"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Active Delivery Notification Banner if order assigned */}
       {activeOrders.length > 0 && (
         <div 
