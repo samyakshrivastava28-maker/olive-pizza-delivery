@@ -15,23 +15,26 @@ export const DeliveryLayout: React.FC = () => {
   useEffect(() => {
     if (!isAuthorized) return;
 
-    let currentLat = 21.0810244;
-    let currentLng = 81.0123793;
-
     if ('geolocation' in navigator) {
       const watchId = navigator.geolocation.watchPosition(
         (pos) => {
-          updateGpsLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.heading || 0, pos.coords.speed || 0);
+          updateGpsLocation(
+            pos.coords.latitude,
+            pos.coords.longitude,
+            pos.coords.heading || 0,
+            pos.coords.speed || 0,
+            pos.coords.accuracy || 0
+          );
         },
-        () => {
-          updateGpsLocation(currentLat, currentLng, 45, 15);
+        (err) => {
+          console.warn('[GPS] Device geolocation error or permission denied:', err.message);
         },
         { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
       );
 
       return () => navigator.geolocation.clearWatch(watchId);
     } else {
-      updateGpsLocation(currentLat, currentLng, 45, 15);
+      console.warn('[GPS] Geolocation API not supported on this browser/device');
     }
   }, [isAuthorized]);
 

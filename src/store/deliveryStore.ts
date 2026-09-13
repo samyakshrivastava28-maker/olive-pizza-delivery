@@ -63,7 +63,7 @@ interface DeliveryState {
   declineDelivery: (orderId: string) => Promise<boolean>;
   confirmPickup: (orderId: string) => Promise<boolean>;
   completeDelivery: (orderId: string, proof?: { proofImageUrl?: string; signatureUrl?: string; notes?: string }) => Promise<{ success: boolean; error?: string }>;
-  updateGpsLocation: (lat: number, lng: number, heading?: number, speed?: number) => Promise<void>;
+  updateGpsLocation: (lat: number, lng: number, heading?: number, speed?: number, accuracy?: number) => Promise<void>;
   updateRiderPhone: (phone: string) => void;
 }
 
@@ -444,7 +444,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     }
   },
 
-  updateGpsLocation: async (lat: number, lng: number, heading: number = 0, speed: number = 0) => {
+  updateGpsLocation: async (lat: number, lng: number, heading: number = 0, speed: number = 0, accuracy: number = 0) => {
     set({ currentLocation: { lat, lng }, isGpsActive: true });
     const uid = get().user?.uid;
     const activeOrder = get().activeOrders[0];
@@ -460,15 +460,31 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
 
     if (uid) {
       try {
+        const nowIso = new Date().toISOString();
         await setDoc(doc(db, 'delivery_partners', uid), {
           uid,
           lat,
           lng,
+          latitude: lat,
+          longitude: lng,
           heading,
           speed,
+          accuracy,
           isOnline: get().isOnline,
           activeOrderId: activeOrder?.id || null,
-          timestamp: new Date().toISOString()
+          lastLocationUpdate: nowIso,
+          timestamp: nowIso
+        }, { merge: true }).catch(() => {});
+
+        // Also update delivery_locations for server-authoritative live tracking
+        await setDoc(doc(db, 'delivery_locations', uid), {
+          latitude: lat,
+          longitude: lng,
+          accuracy,
+          speed,
+          heading,
+          active_order_id: activeOrder?.id || null,
+          updated_at: nowIso
         }, { merge: true }).catch(() => {});
       } catch {}
     }
