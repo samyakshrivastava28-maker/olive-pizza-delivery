@@ -71,6 +71,7 @@ jobs:
           else
             TARGET="-project App.xcodeproj"
           fi
+          sudo gem install xcpretty || true
           xcodebuild \
             $TARGET \
             -scheme App \
@@ -81,8 +82,7 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            PROVISIONING_PROFILE_SPECIFIER="" \
-            2>&1 | xcpretty || true
+            PROVISIONING_PROFILE_SPECIFIER=""
 
       - name: Export Signed IPA (if signing secrets exist)
         if: env.APPLE_CERTIFICATE_BASE64 != ''
@@ -158,16 +158,17 @@ jobs:
           gh release view latest --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1 || \
             gh release create latest --repo "${GITHUB_REPOSITORY}" --title "Olive Pizza Delivery — Latest Release" --notes "Latest official builds for Olive Pizza Delivery."
 
-          # Delete ANY old iOS assets from 'latest' release so only the latest commit file exists
-          OLD_IOS=$(gh release view latest --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[] | select(.name | test("(\\.(ipa|zip)$)|xcarchive")) | .name')
-          for old in $OLD_IOS; do
-            echo "Deleting old release asset: ${old}"
-            gh release delete-asset latest "${old}" --repo "${GITHUB_REPOSITORY}" --yes || true
-          done
-
-          # Upload the new commit's IPA
+          # Only rotate assets if new IPA was successfully built
           if [ -f "release-ios/${IPA_NAME}" ]; then
+            OLD_IOS=$(gh release view latest --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[] | select(.name | test("(\\.(ipa|zip)$)|xcarchive")) | .name')
+            for old in $OLD_IOS; do
+              echo "Deleting old release asset: ${old}"
+              gh release delete-asset latest "${old}" --repo "${GITHUB_REPOSITORY}" --yes || true
+            done
             gh release upload latest "release-ios/${IPA_NAME}" --repo "${GITHUB_REPOSITORY}" --clobber
+            echo "✅ Successfully uploaded ${IPA_NAME} to release 'latest'"
+          else
+            echo "⚠️ No IPA file generated at release-ios/${IPA_NAME} — preserving existing release assets."
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

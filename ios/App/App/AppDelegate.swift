@@ -6,7 +6,7 @@ import UserNotifications
 class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
 
     var window: UIWindow?
-    private let backendBaseUrl = https://olivepizza-owner.onrender.com
+    private let backendBaseUrl = "https://olivepizza-owner.onrender.com"
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         UNUserNotificationCenter.current().delegate = self
@@ -17,24 +17,24 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
     private func registerNotificationCategories() {
         let viewOrderAction = UNNotificationAction(
-            identifier: VIEW_ORDER,
-            title: 📱 View Order,
+            identifier: "VIEW_ORDER",
+            title: "📱 View Order",
             options: [.foreground]
         )
 
         // 1. New Assignment Category
         let acceptDeliveryAction = UNNotificationAction(
-            identifier: ACCEPT_DELIVERY,
-            title: ✅ Accept,
+            identifier: "ACCEPT_DELIVERY",
+            title: "✅ Accept",
             options: [.authenticationRequired]
         )
         let declineDeliveryAction = UNNotificationAction(
-            identifier: DECLINE_DELIVERY,
-            title: ❌ Decline,
+            identifier: "DECLINE_DELIVERY",
+            title: "❌ Decline",
             options: [.destructive, .authenticationRequired]
         )
         let deliveryCategory = UNNotificationCategory(
-            identifier: DELIVERY_ASSIGNMENT_CATEGORY,
+            identifier: "DELIVERY_ASSIGNMENT_CATEGORY",
             actions: [acceptDeliveryAction, declineDeliveryAction, viewOrderAction],
             intentIdentifiers: [],
             options: [.customDismissAction]
@@ -42,12 +42,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
         // 2. Accepted / At Store Category
         let pickedUpAction = UNNotificationAction(
-            identifier: PICKED_UP,
-            title: 📦 Picked Up,
+            identifier: "PICKED_UP",
+            title: "📦 Picked Up",
             options: [.authenticationRequired]
         )
         let acceptedCategory = UNNotificationCategory(
-            identifier: DELIVERY_ORDER_ACCEPTED,
+            identifier: "DELIVERY_ORDER_ACCEPTED",
             actions: [pickedUpAction, viewOrderAction],
             intentIdentifiers: [],
             options: []
@@ -55,12 +55,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
         // 3. Picked Up Category
         let outForDeliveryAction = UNNotificationAction(
-            identifier: OUT_FOR_DELIVERY,
-            title: 🛵 Out for Delivery,
+            identifier: "OUT_FOR_DELIVERY",
+            title: "🛵 Out for Delivery",
             options: [.authenticationRequired]
         )
         let pickedUpCategory = UNNotificationCategory(
-            identifier: DELIVERY_ORDER_PICKED_UP,
+            identifier: "DELIVERY_ORDER_PICKED_UP",
             actions: [outForDeliveryAction, viewOrderAction],
             intentIdentifiers: [],
             options: []
@@ -68,12 +68,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
         // 4. Out For Delivery Category
         let deliveredAction = UNNotificationAction(
-            identifier: DELIVERED,
-            title: ✅ Delivered,
+            identifier: "DELIVERED",
+            title: "✅ Delivered",
             options: [.authenticationRequired]
         )
         let outForDeliveryCategory = UNNotificationCategory(
-            identifier: DELIVERY_ORDER_OUT_FOR_DELIVERY,
+            identifier: "DELIVERY_ORDER_OUT_FOR_DELIVERY",
             actions: [deliveredAction, viewOrderAction],
             intentIdentifiers: [],
             options: []
@@ -81,12 +81,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
         // 5. Security & System Alerts
         let viewAlertAction = UNNotificationAction(
-            identifier: VIEW_ALERT,
-            title: ⚠️ View Alert,
+            identifier: "VIEW_ALERT",
+            title: "⚠️ View Alert",
             options: [.foreground, .authenticationRequired]
         )
         let securityCategory = UNNotificationCategory(
-            identifier: SECURITY_ALERT_CATEGORY,
+            identifier: "SECURITY_ALERT_CATEGORY",
             actions: [viewAlertAction],
             intentIdentifiers: [],
             options: []
@@ -115,14 +115,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         )
     }
 
-    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable : Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
-        NotificationCenter.default.post(
-            name: Notification.Name.capacitorDidReceiveRemoteNotification,
-            object: completionHandler,
-            userInfo: userInfo
-        )
-    }
-
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
@@ -142,27 +134,27 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     ) {
         let userInfo = response.notification.request.content.userInfo
         let actionIdentifier = response.actionIdentifier
-        let orderId = (userInfo[orderId] as? String) ?? (userInfo[order_id] as? String)
+        let orderId = (userInfo["orderId"] as? String) ?? (userInfo["order_id"] as? String)
 
-        let backgroundActions = [ACCEPT_DELIVERY, ACCEPT, DECLINE_DELIVERY, DECLINE, PICKED_UP, OUT_FOR_DELIVERY, DELIVERED]
+        let backgroundActions = ["ACCEPT_DELIVERY", "ACCEPT", "DECLINE_DELIVERY", "DECLINE", "PICKED_UP", "OUT_FOR_DELIVERY", "DELIVERED"]
 
         if backgroundActions.contains(actionIdentifier), let orderId = orderId, !orderId.isEmpty {
             executeBackgroundDeliveryAction(action: actionIdentifier, orderId: orderId, userInfo: userInfo) {
                 NotificationCenter.default.post(
-                    name: Notification.Name(CapacitorNotificationAction),
+                    name: Notification.Name("CapacitorNotificationAction"),
                     object: [
-                        action: actionIdentifier,
-                        data: userInfo
+                        "action": actionIdentifier,
+                        "data": userInfo
                     ]
                 )
                 completionHandler()
             }
         } else {
             NotificationCenter.default.post(
-                name: Notification.Name(CapacitorNotificationAction),
+                name: Notification.Name("CapacitorNotificationAction"),
                 object: [
-                    action: actionIdentifier,
-                    data: userInfo
+                    "action": actionIdentifier,
+                    "data": userInfo
                 ]
             )
             completionHandler()
@@ -175,21 +167,21 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         userInfo: [AnyHashable: Any],
         completion: @escaping () -> Void
     ) {
-        guard let url = URL(string: \(backendBaseUrl)/api/delivery/rider/orders/\(orderId)/action) else {
+        guard let url = URL(string: "\(backendBaseUrl)/api/delivery/rider/orders/\(orderId)/action") else {
             completion()
             return
         }
 
         var request = URLRequest(url: url)
-        request.httpMethod = POST
-        request.setValue(application/json, forHTTPHeaderField: Content-Type)
-        request.setValue(application/json, forHTTPHeaderField: Accept)
-        request.setValue(notif_ios_\(UUID().uuidString), forHTTPHeaderField: Idempotency-Key)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("notif_ios_\(UUID().uuidString)", forHTTPHeaderField: "Idempotency-Key")
 
         let payload: [String: Any] = [
-            action: action,
-            requestId: ios_act_\(UUID().uuidString),
-            source: PUSH_NOTIFICATION
+            "action": action,
+            "requestId": "ios_act_\(UUID().uuidString)",
+            "source": "PUSH_NOTIFICATION"
         ]
 
         do {
@@ -201,9 +193,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
         let task = URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                NSLog([DeliveryApp] iOS background action network error: %@, error.localizedDescription)
+                NSLog("[DeliveryApp] iOS background action network error: %@", error.localizedDescription)
             } else if let httpResponse = response as? HTTPURLResponse {
-                NSLog([DeliveryApp] iOS background action response status: %d, httpResponse.statusCode)
+                NSLog("[DeliveryApp] iOS background action response status: %d", httpResponse.statusCode)
             }
             completion()
         }
