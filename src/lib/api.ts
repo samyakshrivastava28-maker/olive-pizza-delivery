@@ -42,12 +42,29 @@ export interface ApiResponse<T = any> {
   [key: string]: any;
 }
 
+function getOrGenerateDeviceId(): string {
+  try {
+    let id = localStorage.getItem('delivery_device_id');
+    if (!id) {
+      id = 'dev_rider_' + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
+      localStorage.setItem('delivery_device_id', id);
+    }
+    return id;
+  } catch {
+    return 'dev_delivery_client';
+  }
+}
+
 export async function fetchApi<T = any>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
   const primaryUrl = getApiUrl(endpoint);
   const headers = new Headers(options.headers || {});
 
   if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
+  }
+
+  if (!headers.has('X-Device-Id')) {
+    headers.set('X-Device-Id', getOrGenerateDeviceId());
   }
 
   const token = await getCurrentAuthToken();
@@ -74,6 +91,17 @@ export async function fetchApi<T = any>(endpoint: string, options: RequestInit =
       } catch {}
     }
 
+    if (res.status === 429) {
+      const json = await res.json().catch(() => null);
+      return {
+        success: false,
+        code: 'AUTH_RATE_LIMITED',
+        error: json?.message || 'Too many attempts from this device. Please try again later.',
+        message: json?.message || 'Too many attempts from this device. Please try again later.',
+        retryAfter: json?.retryAfter || json?.retryAfterSeconds || 120
+      };
+    }
+
     if (res.status === 401) {
       return { success: false, error: 'Authentication expired or invalid. Please sign in again.' };
     }
@@ -86,7 +114,9 @@ export async function fetchApi<T = any>(endpoint: string, options: RequestInit =
     if (!res.ok) {
       return {
         success: false,
-        error: json?.error || json?.message || ('Server returned error (' + res.status + ')')
+        code: json?.code || 'ERROR',
+        referenceId: json?.referenceId,
+        error: json?.message || json?.error || 'A service error occurred. Please try again.'
       };
     }
 
@@ -95,7 +125,8 @@ export async function fetchApi<T = any>(endpoint: string, options: RequestInit =
     console.warn('[fetchApi] Backend notice for ' + endpoint + ':', err?.message);
     return {
       success: false,
-      error: err?.message || 'Network connection unavailable.'
+      code: 'NETWORK_ERROR',
+      error: 'Unable to connect to the server. Please check your network.'
     };
   }
 }
