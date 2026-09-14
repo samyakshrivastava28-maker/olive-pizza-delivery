@@ -170,6 +170,13 @@ jobs:
             gh release delete-asset latest "${old}" --repo "${GITHUB_REPOSITORY}" --yes || true
           done
 
+          # Purge any unrequested desktop assets (.exe, .dmg) to enforce mobile-only matrix
+          FORBIDDEN_ASSETS=$(gh release view latest --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[] | select(.name | test("\\.(exe|dmg)$")) | .name')
+          for forbidden in $FORBIDDEN_ASSETS; do
+            echo "Purging unrequested desktop asset: ${forbidden}"
+            gh release delete-asset latest "${forbidden}" --repo "${GITHUB_REPOSITORY}" --yes || true
+          done
+
           # Upload the new commit's APK
           gh release upload latest "artifact/${APK_NAME}" --repo "${GITHUB_REPOSITORY}" --clobber
         env:
