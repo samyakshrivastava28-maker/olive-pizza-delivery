@@ -1,10 +1,16 @@
 import React from 'react';
-import { Power, MapPin, Radio } from 'lucide-react';
+import { Power, MapPin, Radio, Bell, BellOff } from 'lucide-react';
 import { AppLogo } from '../common/AppLogo';
 import { useDeliveryStore } from '../../store/deliveryStore';
+import { deviceAlarmService } from '../../services/DeviceAlarmService';
 
 export const TopHeader: React.FC = () => {
   const { riderProfile, isOnline, toggleOnlineStatus, isGpsActive } = useDeliveryStore();
+  const [alarmEnabled, setAlarmEnabled] = React.useState(() => deviceAlarmService.isAlarmEnabled());
+
+  React.useEffect(() => {
+    return deviceAlarmService.subscribe((enabled) => setAlarmEnabled(enabled));
+  }, []);
 
   return (
     <header className="sticky top-0 z-40 bg-[#090E17]/95 backdrop-blur-md border-b border-slate-800/80 px-4 py-2.5 flex items-center justify-between">
@@ -17,6 +23,23 @@ export const TopHeader: React.FC = () => {
       </div>
 
       <div className="flex items-center gap-2.5">
+        <button
+          onClick={() => {
+            const next = !alarmEnabled;
+            deviceAlarmService.setAlarmEnabled(next);
+            setAlarmEnabled(next);
+          }}
+          className={'px-3 py-1.5 rounded-full font-bold text-xs flex items-center gap-1.5 border transition-all cursor-pointer ' + (
+            alarmEnabled
+              ? 'bg-amber-500/15 border-amber-500/40 text-amber-400'
+              : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+          )}
+          title="Toggle Delivery Alarm for this device"
+        >
+          {alarmEnabled ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5" />}
+          <span>Alarm: {alarmEnabled ? 'ON' : 'OFF'}</span>
+        </button>
+
         <div className="hidden sm:flex items-center gap-1 text-[10px] text-slate-400">
           <Radio className={'w-3 h-3 ' + (isGpsActive ? 'text-emerald-400 animate-pulse' : 'text-slate-500')} />
           <span>{isGpsActive ? 'GPS Live' : 'GPS Idle'}</span>

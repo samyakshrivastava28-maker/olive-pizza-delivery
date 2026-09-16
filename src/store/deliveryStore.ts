@@ -16,6 +16,7 @@ import { auth, db } from '../lib/firebase';
 import { fetchApi, getApiUrl } from '../lib/api';
 import { offlineGpsBuffer } from '../lib/offlineGpsBuffer';
 import { SoundAlertEngine } from '../lib/SoundAlertEngine';
+import { deviceAlarmService } from '../services/DeviceAlarmService';
 import type { 
   DeliveryOrder, 
   OrderStatus, 
@@ -247,6 +248,10 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
 
     set({ isOnline: next });
 
+    if (!next) {
+      SoundAlertEngine.stopAlarm();
+    }
+
     try {
       await fetchApi('/api/delivery/rider/status', {
         method: 'POST',
@@ -283,9 +288,13 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
           } as DeliveryOrder);
         });
 
-        // Trigger continuous alarm if new order assigned to rider, stop if none pending
+        // Trigger continuous alarm if new order assigned to rider, stop if none pending or offline
         const hasUnaccepted = list.some((o) => o.status === 'partner_assigned');
-        if (hasUnaccepted) {
+        const isOnline = get().isOnline;
+        const isAlarmEnabled = deviceAlarmService.isAlarmEnabled();
+
+        // Guarantees alarm NEVER sounds when rider is offline or device alarm is OFF
+        if (hasUnaccepted && isOnline && isAlarmEnabled) {
           SoundAlertEngine.startContinuousAlarm();
         } else {
           SoundAlertEngine.stopAlarm();
