@@ -240,7 +240,16 @@ export default function DeliveryPushNotificationManager() {
       where('status', 'in', ['partner_assigned', 'ready'])
     );
 
+    let isInitialSnapshot = true;
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (isInitialSnapshot) {
+        isInitialSnapshot = false;
+        snapshot.docs.forEach((doc) => {
+          const order = doc.data() as any;
+          NotificationDeduplicator.record(`delivery_assign:${doc.id}:${order?.version || 1}`);
+        });
+        return;
+      }
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added' || change.type === 'modified') {
           const order = { id: change.doc.id, ...change.doc.data() } as any;

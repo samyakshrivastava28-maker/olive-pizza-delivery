@@ -288,8 +288,14 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
           } as DeliveryOrder);
         });
 
-        // Trigger continuous alarm if new order assigned to rider, stop if none pending or offline
-        const hasUnaccepted = list.some((o) => o.status === 'partner_assigned');
+        // Trigger continuous alarm only for fresh assignments (< 20 mins)
+        const now = Date.now();
+        const hasUnaccepted = list.some((o) => {
+          if (o.status !== 'partner_assigned') return false;
+          const assignedTime = (o as any).assignedAt || (o as any).partnerAssignedAt || o.updatedAt || o.createdAt;
+          const timeMs = assignedTime ? new Date(assignedTime).getTime() : 0;
+          return timeMs > 0 && (now - timeMs < 20 * 60 * 1000);
+        });
         const isOnline = get().isOnline;
         const isAlarmEnabled = deviceAlarmService.isAlarmEnabled();
 
