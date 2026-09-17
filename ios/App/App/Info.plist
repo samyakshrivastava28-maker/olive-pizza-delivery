@@ -39,7 +39,7 @@
 	<string>Main</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
@@ -56,5 +56,13 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Olive Pizza Delivery uses your location to verify delivery radius, branch operations, and mapping.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Olive Pizza Delivery uses background location for real-time delivery and order tracking.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Olive Pizza Delivery requires camera access to scan QR codes and barcodes.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Olive Pizza Delivery requires photo library access to upload profile pictures and receipts.</string>
 </dict>
 </plist>
