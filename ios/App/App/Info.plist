@@ -64,5 +64,9 @@
 	<string>Olive Pizza Delivery requires camera access to scan QR codes and barcodes.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Olive Pizza Delivery requires photo library access to upload profile pictures and receipts.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>
