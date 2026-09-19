@@ -41,6 +41,9 @@
 * **200m Delivery Completion Geofence**: Server-side validation prevents orders from being marked as `delivered` unless the rider is physically within 200 meters of the customer's coordinates.
 * **Photo Proof of Delivery**: Allows capturing camera proof of delivery for contactless handovers.
 
+### 🛡️ 5. DPDP Privacy & PII Protection
+* **Customer Data Masking**: In compliance with Indian DPDP Act 2023, raw customer telephone numbers are scrubbed from push notification payloads and minimized on assignment modals.
+
 ---
 
 ## 🏗️ Technical Architecture & Stack
