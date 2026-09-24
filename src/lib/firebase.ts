@@ -14,6 +14,8 @@ export const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+// Apply default device/browser preference for Phone Auth & reCAPTCHA language
+auth.useDeviceLanguage();
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
