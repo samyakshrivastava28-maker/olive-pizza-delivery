@@ -49,7 +49,15 @@ jobs:
 
       # 5. Setup Android SDK
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          SDK_DIR="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$SDK_DIR" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$SDK_DIR" >> $GITHUB_ENV
+          echo "$SDK_DIR/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$SDK_DIR/platform-tools" >> $GITHUB_PATH
+          if [ -x "$SDK_DIR/cmdline-tools/latest/bin/sdkmanager" ]; then
+            yes | "$SDK_DIR/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+          fi
 
       # 6. Sync Capacitor with Android native project
       - name: Sync Capacitor
@@ -119,6 +127,10 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease --no-daemon
         working-directory: android
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || 'olivepizza' }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'olivepizza' }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'olivepizza' }}
 
       # 12. Verify the APK is properly signed
       - name: Verify APK Signature
@@ -131,8 +143,9 @@ jobs:
           fi
           SIZE=$(du -sh "$APK" | cut -f1)
           echo "✅ APK found ($SIZE)"
-          BUILD_TOOLS=$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)
-          $ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner verify --verbose "$APK" \
+          SDK_DIR="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          BUILD_TOOLS=$(ls "$SDK_DIR/build-tools" | sort -V | tail -1)
+          "$SDK_DIR/build-tools/$BUILD_TOOLS/apksigner" verify --verbose "$APK" \
             && echo "✅ APK is properly signed." \
             || { echo "❌ APK signature verification FAILED — APK is unsigned or corrupted."; exit 1; }
 
