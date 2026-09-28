@@ -31,6 +31,7 @@ interface DeliveryState {
   userRole: string | null;
   isAuthChecking: boolean;
   isAuthorized: boolean;
+  authStatus?: 'APPROVED' | 'PENDING_OWNER_APPROVAL' | 'ACCOUNT_REJECTED' | 'ACCOUNT_DEACTIVATED' | null;
   restrictedReason: string | null;
   restrictedEmail: string | null;
   clearRestricted: () => void;
@@ -87,6 +88,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
   userRole: null,
   isAuthChecking: true,
   isAuthorized: false,
+  authStatus: null,
   restrictedReason: null,
   restrictedEmail: null,
   clearRestricted: () => set({ restrictedReason: null, restrictedEmail: null }),
@@ -173,6 +175,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
             isOnline: true,
             isAuthChecking: false,
             isAuthorized: true,
+            authStatus: 'APPROVED',
             restrictedReason: null,
             restrictedEmail: null
           });
@@ -181,20 +184,26 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
           get().fetchTodayStats();
           get().fetchMonthlyReports();
         } else {
-          // Unauthorized account — wipe session and enforce immediate sign out
+          // Explicitly unauthorized or pending account
           const denialReason = authData?.reason || 'Access Denied: This account is not authorized to use the Delivery application.';
-          console.warn('[DeliveryStore] Access restricted for account:', emailLower, denialReason);
+          const code = authData?.code || 'UNAUTHORIZED';
+          console.warn('[DeliveryStore] Access restricted for account:', emailLower, code, denialReason);
 
-          await signOut(auth).catch(() => {});
+          const isPending = code === 'PENDING_OWNER_APPROVAL';
+          if (!isPending) {
+            await signOut(auth).catch(() => {});
+          }
+
           localStorage.removeItem('delivery_rider_profile');
           sessionStorage.clear();
 
           set({
-            user: null,
+            user: isPending ? firebaseUser : null,
             riderProfile: null,
             userRole: null,
             isAuthChecking: false,
             isAuthorized: false,
+            authStatus: isPending ? 'PENDING_OWNER_APPROVAL' : code === 'ACCOUNT_REJECTED' ? 'ACCOUNT_REJECTED' : code === 'ACCOUNT_INACTIVE' ? 'ACCOUNT_DEACTIVATED' : null,
             restrictedReason: denialReason,
             restrictedEmail: emailLower,
             activeOrders: []
@@ -202,14 +211,14 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         }
       } catch (err: any) {
         console.error('[DeliveryStore] Auth handshake network error:', err);
-        await signOut(auth).catch(() => {});
         set({
-          user: null,
+          user: firebaseUser,
           riderProfile: null,
           userRole: null,
           isAuthChecking: false,
           isAuthorized: false,
-          restrictedReason: 'Access Denied: Server authorization unreachable or account unauthorized.',
+          authStatus: null,
+          restrictedReason: 'Server authorization unreachable. Please check your network connection and retry.',
           restrictedEmail: emailLower,
           activeOrders: []
         });
