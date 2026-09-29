@@ -46,6 +46,16 @@ export interface DeliveryOrder {
   deliveryFee: number;
   paymentMethod?: 'COD' | 'ONLINE' | 'UPI' | string;
   paymentStatus?: 'PAID' | 'PENDING' | string;
+  isPaid?: boolean;
+  isCod?: boolean;
+  paymentCollectionType?: 'CASH' | 'UPI_QR' | string;
+  codPaymentAttempt?: {
+    attemptId: string;
+    amount: number;
+    status: string;
+    upiString: string;
+    expiresAt: string;
+  };
   status: OrderStatus;
   orderSource?: string;
   fulfillment?: string;

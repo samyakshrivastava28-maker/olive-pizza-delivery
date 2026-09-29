@@ -65,6 +65,9 @@ interface DeliveryState {
   declineDelivery: (orderId: string) => Promise<boolean>;
   confirmPickup: (orderId: string) => Promise<boolean>;
   completeDelivery: (orderId: string, proof?: { proofImageUrl?: string; signatureUrl?: string; notes?: string }) => Promise<{ success: boolean; error?: string }>;
+  collectCodCash: (orderId: string, notes?: string) => Promise<{ success: boolean; error?: string; paymentStatus?: string }>;
+  generateCodUpiQr: (orderId: string) => Promise<{ success: boolean; error?: string; attemptId?: string; amountDue?: number; upiString?: string; expiresAt?: string }>;
+  checkCodPaymentStatus: (orderId: string) => Promise<{ success: boolean; isPaid: boolean; paymentStatus?: string; error?: string }>;
   updateGpsLocation: (lat: number, lng: number, heading?: number, speed?: number, accuracy?: number) => Promise<void>;
   updateRiderPhone: (phone: string) => void;
 }
@@ -465,6 +468,68 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
       }
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to complete delivery' };
+    }
+  },
+
+  collectCodCash: async (orderId: string, notes?: string) => {
+    try {
+      const res = await fetchApi('/api/payments/cod/cash-collect', {
+        method: 'POST',
+        body: JSON.stringify({ orderId, notes }),
+      });
+      if (res.success) {
+        set((state) => ({
+          activeOrders: state.activeOrders.map((o) =>
+            o.id === orderId
+              ? { ...o, paymentStatus: 'PAID', isPaid: true, paymentCollectionType: 'CASH' }
+              : o
+          ),
+        }));
+        return { success: true, paymentStatus: 'PAID' };
+      }
+      return { success: false, error: res.error || 'Cash collection failed' };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Cash collection failed' };
+    }
+  },
+
+  generateCodUpiQr: async (orderId: string) => {
+    try {
+      const res = await fetchApi('/api/payments/cod/upi-intent', {
+        method: 'POST',
+        body: JSON.stringify({ orderId }),
+      });
+      if (res.success) {
+        return {
+          success: true,
+          attemptId: res.attemptId,
+          amountDue: res.amountDue,
+          upiString: res.upiString,
+          expiresAt: res.expiresAt,
+        };
+      }
+      return { success: false, error: res.error || 'Failed to generate UPI QR' };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to generate UPI QR' };
+    }
+  },
+
+  checkCodPaymentStatus: async (orderId: string) => {
+    try {
+      const res = await fetchApi(`/api/payments/cod/status/${orderId}`);
+      if (res.success && res.isPaid) {
+        set((state) => ({
+          activeOrders: state.activeOrders.map((o) =>
+            o.id === orderId
+              ? { ...o, paymentStatus: 'PAID', isPaid: true, paymentCollectionType: res.paymentCollectionType }
+              : o
+          ),
+        }));
+        return { success: true, isPaid: true, paymentStatus: res.paymentStatus };
+      }
+      return { success: true, isPaid: Boolean(res?.isPaid), paymentStatus: res?.paymentStatus };
+    } catch (err: any) {
+      return { success: false, isPaid: false, error: err.message };
     }
   },
 
