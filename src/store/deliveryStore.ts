@@ -49,9 +49,14 @@ interface DeliveryState {
   currentMonthHistory: DeliveryOrder[];
   isHistoryLoading: boolean;
   
-  // GPS state
+  // GPS state & enforcement
   currentLocation: { lat: number; lng: number } | null;
   isGpsActive: boolean;
+  gpsStatus: 'GRANTED' | 'DENIED' | 'UNAVAILABLE' | 'STALE' | 'INITIALIZING' | 'OFFLINE';
+  lastGpsFix: number | null;
+  isGpsLocked: boolean;
+  setGpsStatus: (status: 'GRANTED' | 'DENIED' | 'UNAVAILABLE' | 'STALE' | 'INITIALIZING' | 'OFFLINE', isLocked?: boolean) => void;
+  requestGpsUnlock: () => Promise<boolean>;
 
   // Actions
   initAuth: () => () => void;
@@ -108,6 +113,9 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
   
   currentLocation: null,
   isGpsActive: false,
+  gpsStatus: 'INITIALIZING',
+  lastGpsFix: null,
+  isGpsLocked: false,
 
   initAuth: () => {
     const unsubAuth = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -256,22 +264,131 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
   toggleOnlineStatus: async (targetStatus?: boolean) => {
     const current = get().isOnline;
     const next = targetStatus !== undefined ? targetStatus : !current;
-    const uid = get().user?.uid;
 
-    set({ isOnline: next });
-
+    // Case 1: Switching to OFFLINE — Always allowed immediately
     if (!next) {
       SoundAlertEngine.stopAlarm();
+      set({ isOnline: false, isGpsLocked: false, isGpsActive: false, gpsStatus: 'OFFLINE' });
+      try {
+        await fetchApi('/api/delivery/rider/status', {
+          method: 'POST',
+          body: JSON.stringify({ isOnline: false })
+        });
+      } catch {}
+      return true;
     }
 
-    try {
-      await fetchApi('/api/delivery/rider/status', {
-        method: 'POST',
-        body: JSON.stringify({ isOnline: next })
-      });
-    } catch {}
+    // Case 2: Switching to ONLINE — GPS is strictly MANDATORY
+    set({ isOnline: true });
 
-    return true;
+    if (!('geolocation' in navigator)) {
+      set({ isGpsLocked: true, gpsStatus: 'UNAVAILABLE', isGpsActive: false });
+      return false;
+    }
+
+    // Check if we have an active, fresh GPS fix (<60 seconds old)
+    const lastFix = get().lastGpsFix;
+    const currentLoc = get().currentLocation;
+    const isFresh = lastFix && Date.now() - lastFix < 60000 && currentLoc;
+
+    if (isFresh) {
+      set({ isGpsLocked: false, gpsStatus: 'GRANTED', isGpsActive: true });
+      try {
+        await fetchApi('/api/delivery/rider/status', {
+          method: 'POST',
+          body: JSON.stringify({
+            isOnline: true,
+            latitude: currentLoc.lat,
+            longitude: currentLoc.lng
+          })
+        });
+      } catch {}
+      return true;
+    }
+
+    // Attempt high-accuracy GPS fix before allowing full operation
+    return new Promise<boolean>((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const { latitude, longitude, heading, speed, accuracy } = pos.coords;
+          await get().updateGpsLocation(latitude, longitude, heading || 0, speed || 0, accuracy || 0);
+          set({ isGpsLocked: false, gpsStatus: 'GRANTED', isGpsActive: true });
+
+          try {
+            await fetchApi('/api/delivery/rider/status', {
+              method: 'POST',
+              body: JSON.stringify({
+                isOnline: true,
+                latitude,
+                longitude,
+                accuracy
+              })
+            });
+          } catch {}
+
+          resolve(true);
+        },
+        (err) => {
+          console.warn('[DeliveryStore] GPS fix failed when going online:', err.message);
+          set({
+            isGpsLocked: true,
+            gpsStatus: err.code === 1 ? 'DENIED' : 'UNAVAILABLE',
+            isGpsActive: false
+          });
+          resolve(false);
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+      );
+    });
+  },
+
+  setGpsStatus: (status, isLocked) => {
+    set((state) => ({
+      gpsStatus: status,
+      isGpsLocked: isLocked !== undefined ? isLocked : (state.isOnline && (status === 'DENIED' || status === 'UNAVAILABLE' || status === 'STALE')),
+      isGpsActive: status === 'GRANTED'
+    }));
+  },
+
+  requestGpsUnlock: async () => {
+    if (!('geolocation' in navigator)) {
+      set({ isGpsLocked: true, gpsStatus: 'UNAVAILABLE', isGpsActive: false });
+      return false;
+    }
+
+    return new Promise<boolean>((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const { latitude, longitude, heading, speed, accuracy } = pos.coords;
+          await get().updateGpsLocation(latitude, longitude, heading || 0, speed || 0, accuracy || 0);
+          set({ isGpsLocked: false, gpsStatus: 'GRANTED', isGpsActive: true });
+
+          try {
+            await fetchApi('/api/delivery/rider/status', {
+              method: 'POST',
+              body: JSON.stringify({
+                isOnline: true,
+                latitude,
+                longitude,
+                accuracy
+              })
+            });
+          } catch {}
+
+          resolve(true);
+        },
+        (err) => {
+          console.warn('[DeliveryStore] GPS unlock retry failed:', err.message);
+          set({
+            isGpsLocked: true,
+            gpsStatus: err.code === 1 ? 'DENIED' : 'UNAVAILABLE',
+            isGpsActive: false
+          });
+          resolve(false);
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+      );
+    });
   },
 
   subscribeToActiveOrders: (riderUid: string) => {
@@ -534,7 +651,14 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
   },
 
   updateGpsLocation: async (lat: number, lng: number, heading: number = 0, speed: number = 0, accuracy: number = 0) => {
-    set({ currentLocation: { lat, lng }, isGpsActive: true });
+    const now = Date.now();
+    set({
+      currentLocation: { lat, lng },
+      isGpsActive: true,
+      lastGpsFix: now,
+      gpsStatus: 'GRANTED',
+      isGpsLocked: false
+    });
     const uid = get().user?.uid;
     const activeOrder = get().activeOrders[0];
 
