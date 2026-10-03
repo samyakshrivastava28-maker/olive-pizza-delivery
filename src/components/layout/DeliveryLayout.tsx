@@ -11,7 +11,6 @@ export const DeliveryLayout: React.FC = () => {
     isAuthChecking,
     isAuthorized,
     restrictedReason,
-    initAuth,
     updateGpsLocation,
     isOnline,
     isGpsLocked,
@@ -24,11 +23,6 @@ export const DeliveryLayout: React.FC = () => {
   } = useDeliveryStore();
 
   const [retryingGps, setRetryingGps] = useState(false);
-
-  useEffect(() => {
-    const unsub = initAuth();
-    return () => unsub();
-  }, [initAuth]);
 
   // Geolocation active watcher
   useEffect(() => {

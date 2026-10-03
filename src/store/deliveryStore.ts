@@ -662,7 +662,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     const uid = get().user?.uid;
     const activeOrder = get().activeOrders[0];
 
-    // Enqueue to offline buffer queue
+    // Enqueue to offline buffer queue (automatically throttled and transmitted via backend API -> Supabase)
     offlineGpsBuffer.enqueue({
       lat,
       lng,
@@ -670,37 +670,6 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
       speed,
       activeOrderId: activeOrder?.id || null
     });
-
-    if (uid) {
-      try {
-        const nowIso = new Date().toISOString();
-        await setDoc(doc(db, 'delivery_partners', uid), {
-          uid,
-          lat,
-          lng,
-          latitude: lat,
-          longitude: lng,
-          heading,
-          speed,
-          accuracy,
-          isOnline: get().isOnline,
-          activeOrderId: activeOrder?.id || null,
-          lastLocationUpdate: nowIso,
-          timestamp: nowIso
-        }, { merge: true }).catch(() => {});
-
-        // Also update delivery_locations for server-authoritative live tracking
-        await setDoc(doc(db, 'delivery_locations', uid), {
-          latitude: lat,
-          longitude: lng,
-          accuracy,
-          speed,
-          heading,
-          active_order_id: activeOrder?.id || null,
-          updated_at: nowIso
-        }, { merge: true }).catch(() => {});
-      } catch {}
-    }
   },
 
   updateRiderPhone: (phone: string) => {

@@ -19,6 +19,8 @@ class OfflineGpsBufferService {
   private static readonly STORAGE_KEY = 'olive_rider_offline_gps_queue';
   private static readonly MAX_BUFFER_SIZE = 50; // Cap to prevent unbounded storage
   private isFlushing = false;
+  private lastSentTime = 0;
+  private flushTimer: any = null;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -30,7 +32,9 @@ class OfflineGpsBufferService {
   }
 
   /**
-   * Enqueue a GPS location breadcrumb
+   * Enqueue a GPS location breadcrumb with dynamic frequency throttling:
+   * - 1.5 seconds when delivering an active order (high-frequency turn-by-turn tracking)
+   * - 25 seconds when idle online (battery & network conservation)
    */
   public enqueue(point: Omit<BufferedGpsPoint, 'id' | 'timestamp'>) {
     const queue = this.getQueue();
@@ -47,9 +51,25 @@ class OfflineGpsBufferService {
     queue.push(entry);
     this.saveQueue(queue);
 
-    // Try flushing immediately if online
-    if (navigator.onLine) {
+    if (!navigator.onLine) {
+      return;
+    }
+
+    const minIntervalMs = point.activeOrderId ? 1500 : 25000;
+    const elapsed = Date.now() - this.lastSentTime;
+
+    if (elapsed >= minIntervalMs) {
+      if (this.flushTimer) {
+        clearTimeout(this.flushTimer);
+        this.flushTimer = null;
+      }
       this.flush();
+    } else if (!this.flushTimer) {
+      const waitMs = Math.max(100, minIntervalMs - elapsed);
+      this.flushTimer = setTimeout(() => {
+        this.flushTimer = null;
+        this.flush();
+      }, waitMs);
     }
   }
 
@@ -79,7 +99,8 @@ class OfflineGpsBufferService {
       });
 
       if (res && res.success !== false) {
-        // Clear flushed queue
+        // Clear flushed queue and mark sent time
+        this.lastSentTime = Date.now();
         this.saveQueue([]);
         console.log(`[GPS Buffer] Flushed ${queue.length} buffered GPS points successfully`);
       }
