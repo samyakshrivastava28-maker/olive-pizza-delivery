@@ -7,13 +7,12 @@ import {
   type Unsubscribe, 
   getDocs,
   getDoc,
-  doc,
-  setDoc,
-  updateDoc
+  doc
 } from 'firebase/firestore';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { fetchApi, getApiUrl } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { offlineGpsBuffer } from '../lib/offlineGpsBuffer';
 import { SoundAlertEngine } from '../lib/SoundAlertEngine';
 import { deviceAlarmService } from '../services/DeviceAlarmService';
@@ -269,6 +268,12 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     if (!next) {
       SoundAlertEngine.stopAlarm();
       set({ isOnline: false, isGpsLocked: false, isGpsActive: false, gpsStatus: 'OFFLINE' });
+      const uid = get().user?.uid;
+      if (supabase && uid) {
+        try {
+          supabase.from('delivery_locations').update({ online_status: false, last_updated: new Date().toISOString() }).eq('delivery_partner_id', uid).then();
+        } catch {}
+      }
       try {
         await fetchApi('/api/delivery/rider/status', {
           method: 'POST',
@@ -662,12 +667,14 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     const uid = get().user?.uid;
     const activeOrder = get().activeOrders[0];
 
-    // Enqueue to offline buffer queue (automatically throttled and transmitted via backend API -> Supabase)
+    // Enqueue to offline buffer queue (streams directly to Supabase Realtime hot path)
     offlineGpsBuffer.enqueue({
+      riderId: uid,
       lat,
       lng,
       heading,
       speed,
+      accuracy,
       activeOrderId: activeOrder?.id || null
     });
   },

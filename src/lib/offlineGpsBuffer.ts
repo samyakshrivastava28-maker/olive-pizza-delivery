@@ -1,19 +1,25 @@
 import { fetchApi } from './api';
+import { supabase } from './supabase';
 
 export interface BufferedGpsPoint {
   id: string;
+  riderId?: string;
   lat: number;
   lng: number;
   heading: number;
   speed: number;
+  accuracy?: number;
   activeOrderId: string | null;
   timestamp: string;
 }
 
 /**
- * 🛰️ Olive Pizza Delivery Offline GPS Buffer
- * Buffers rider breadcrumbs locally when the rider moves through network dead zones,
- * and automatically flushes them in idempotent batches upon reconnect.
+ * 🛰️ Olive Pizza Delivery Offline GPS Buffer & Direct Hot-Path Transport
+ * 
+ * STRICT ARCHITECTURAL INVARIANT (Sections 10 & 11):
+ * High-frequency GPS coordinates stream directly to Supabase Realtime / WebSocket.
+ * Coordinates DO NOT route through Node/Express per coordinate.
+ * If offline or disconnected, breadcrumbs are buffered locally and flushed immediately upon reconnect.
  */
 class OfflineGpsBufferService {
   private static readonly STORAGE_KEY = 'olive_rider_offline_gps_queue';
@@ -25,7 +31,7 @@ class OfflineGpsBufferService {
   constructor() {
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => {
-        console.log('[GPS Buffer] Network reconnected. Flushing offline buffer...');
+        console.log('[GPS HotPath] Network reconnected. Flushing offline buffer to Supabase...');
         this.flush();
       });
     }
@@ -74,7 +80,8 @@ class OfflineGpsBufferService {
   }
 
   /**
-   * Flush buffered GPS points to server
+   * Flush buffered GPS points directly to Supabase Realtime
+   * Bypasses Node/Express per coordinate (Sections 10, 11)
    */
   public async flush(): Promise<void> {
     if (this.isFlushing || !navigator.onLine) return;
@@ -85,27 +92,69 @@ class OfflineGpsBufferService {
     try {
       // Pick latest point as authoritative live point
       const latestPoint = queue[queue.length - 1];
+      const riderId = latestPoint.riderId;
 
-      const res = await fetchApi('/api/delivery/rider/location', {
-        method: 'POST',
-        body: JSON.stringify({
-          lat: latestPoint.lat,
-          lng: latestPoint.lng,
-          heading: latestPoint.heading,
-          speed: latestPoint.speed,
-          activeOrderId: latestPoint.activeOrderId,
-          bufferedCount: queue.length
-        })
-      });
-
-      if (res && res.success !== false) {
-        // Clear flushed queue and mark sent time
-        this.lastSentTime = Date.now();
+      if (!riderId) {
+        // Discard unassociated points
         this.saveQueue([]);
-        console.log(`[GPS Buffer] Flushed ${queue.length} buffered GPS points successfully`);
+        return;
+      }
+
+      let supabaseSuccess = false;
+
+      // ── HOT PATH: Direct Supabase Write (Bypassing Node API) ──
+      if (supabase) {
+        try {
+          const { error } = await supabase.from('delivery_locations').upsert({
+            delivery_partner_id: riderId,
+            active_order_id: latestPoint.activeOrderId || null,
+            latitude: Number(latestPoint.lat),
+            longitude: Number(latestPoint.lng),
+            heading: Number(latestPoint.heading || 0),
+            speed: Number(latestPoint.speed || 0),
+            accuracy: Number(latestPoint.accuracy || 5),
+            online_status: true,
+            last_updated: new Date().toISOString()
+          }, {
+            onConflict: 'delivery_partner_id'
+          });
+
+          if (!error) {
+            supabaseSuccess = true;
+            this.lastSentTime = Date.now();
+            this.saveQueue([]);
+            // Debug log
+            // console.log(`[GPS HotPath] Streamed directly to Supabase Realtime (bypassed Node backend)`);
+          } else {
+            console.warn('[GPS HotPath] Supabase upsert error:', error.message);
+          }
+        } catch (sErr: any) {
+          console.warn('[GPS HotPath] Supabase stream exception:', sErr?.message);
+        }
+      }
+
+      // If Supabase client unavailable or failed, fallback to Node control endpoint
+      if (!supabaseSuccess) {
+        const res = await fetchApi('/api/delivery/location', {
+          method: 'POST',
+          body: JSON.stringify({
+            lat: latestPoint.lat,
+            lng: latestPoint.lng,
+            heading: latestPoint.heading,
+            speed: latestPoint.speed,
+            accuracy: latestPoint.accuracy,
+            activeOrderId: latestPoint.activeOrderId,
+            bufferedCount: queue.length
+          })
+        });
+
+        if (res && res.success !== false) {
+          this.lastSentTime = Date.now();
+          this.saveQueue([]);
+        }
       }
     } catch (err) {
-      console.warn('[GPS Buffer] Offline buffer flush retry later:', err);
+      console.warn('[GPS Buffer] Buffer flush retry later:', err);
     } finally {
       this.isFlushing = false;
     }
