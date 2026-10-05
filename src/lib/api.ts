@@ -63,6 +63,13 @@ export async function fetchApi<T = any>(endpoint: string, options: RequestInit =
     headers.set('Content-Type', 'application/json');
   }
 
+  if (!headers.has('X-App-Target')) {
+    headers.set('X-App-Target', 'DELIVERY');
+  }
+  if (!headers.has('X-App-Source')) {
+    headers.set('X-App-Source', 'DELIVERY');
+  }
+
   if (!headers.has('X-Device-Id')) {
     headers.set('X-Device-Id', getOrGenerateDeviceId());
   }
