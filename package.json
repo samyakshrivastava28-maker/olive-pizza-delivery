@@ -8,6 +8,9 @@
     "preview": "vite preview --port 5177",
     "lint": "tsc --noEmit"
   },
+  "engines": {
+    "node": ">=24 <25"
+  },
   "dependencies": {
     "@capacitor-firebase/authentication": "^7.5.0",
     "@capacitor/android": "^7.6.8",

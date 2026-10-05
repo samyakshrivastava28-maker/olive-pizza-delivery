@@ -63,14 +63,6 @@ export default function LoginPage() {
   const verifyAndAuthorizeRider = async (firebaseUser: any): Promise<boolean> => {
     const userEmail = (firebaseUser.email || '').toLowerCase().trim();
 
-    // 1. Mandatory Email Verification Gate (for email authentication)
-    if (!firebaseUser.emailVerified && !firebaseUser.phoneNumber && authMethod === 'email') {
-      setUnverifiedEmailUser(firebaseUser);
-      await signOut(auth).catch(() => {});
-      toast.error('Please verify your email before logging in as a Delivery Partner.');
-      return false;
-    }
-
     let isAuthorized = false;
     let denialReason = 'Your account is not registered as an authorized Olive Pizza delivery partner.';
 
@@ -80,7 +72,9 @@ export default function LoginPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`
+          'Authorization': `Bearer ${idToken}`,
+          'X-App-Target': 'DELIVERY',
+          'X-App-Source': 'DELIVERY'
         },
         body: JSON.stringify({
           targetApp: 'DELIVERY'
@@ -99,6 +93,14 @@ export default function LoginPage() {
     } catch (netErr: any) {
       console.warn('[LoginPage] Authorization API check notice:', netErr);
       denialReason = 'Unable to reach authorization server. Please check your network connection.';
+    }
+
+    // If not authorized by server and user email is unverified
+    if (!isAuthorized && !firebaseUser.emailVerified && !firebaseUser.phoneNumber && authMethod === 'email') {
+      setUnverifiedEmailUser(firebaseUser);
+      await signOut(auth).catch(() => {});
+      toast.error('Please verify your email before logging in as a Delivery Partner.');
+      return false;
     }
 
     if (!isAuthorized) {

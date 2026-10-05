@@ -77,6 +77,31 @@ interface DeliveryState {
 }
 
 let activeOrdersUnsub: Unsubscribe | null = null;
+let activeGpsWatchId: number | null = null;
+
+const startContinuousGpsWatch = (get: () => DeliveryState, set: any) => {
+  if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return;
+  if (activeGpsWatchId !== null) return;
+
+  activeGpsWatchId = navigator.geolocation.watchPosition(
+    async (pos) => {
+      const { latitude, longitude, heading, speed, accuracy } = pos.coords;
+      await get().updateGpsLocation(latitude, longitude, heading || 0, speed || 0, accuracy || 0);
+      set({ isGpsLocked: false, gpsStatus: 'GRANTED', isGpsActive: true });
+    },
+    (err) => {
+      console.warn('[DeliveryStore] Continuous GPS watch notice:', err.message);
+    },
+    { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
+  );
+};
+
+const stopContinuousGpsWatch = () => {
+  if (typeof navigator !== 'undefined' && 'geolocation' in navigator && activeGpsWatchId !== null) {
+    navigator.geolocation.clearWatch(activeGpsWatchId);
+    activeGpsWatchId = null;
+  }
+};
 
 const DEFAULT_TODAY_STATS: RiderShiftStats = {
   assigned: 0,
@@ -117,6 +142,42 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
   isGpsLocked: false,
 
   initAuth: () => {
+    const handleResume = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible' && auth.currentUser && get().isAuthorized) {
+        auth.currentUser.getIdToken().then(idToken => {
+          return fetch(getApiUrl('api/auth/authorize-app'), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${idToken}`,
+              'X-App-Target': 'DELIVERY',
+              'X-App-Source': 'DELIVERY'
+            },
+            body: JSON.stringify({ targetApp: 'DELIVERY' })
+          });
+        }).then(res => res.json()).then(authData => {
+          if (authData && !authData.authorized) {
+            console.warn('[DeliveryStore] Account revoked on app resume:', authData.reason);
+            signOut(auth).catch(() => {});
+            localStorage.removeItem('delivery_rider_profile');
+            sessionStorage.clear();
+            set({
+              user: null,
+              riderProfile: null,
+              userRole: null,
+              isAuthorized: false,
+              restrictedReason: authData.reason || 'This account or franchise has been deactivated by the store owner.',
+              restrictedEmail: auth.currentUser?.email || null,
+              activeOrders: []
+            });
+          }
+        }).catch(err => console.warn('[DeliveryStore] Resume auth check error:', err));
+      }
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleResume);
+    }
+
     const unsubAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       if (!firebaseUser) {
         if (activeOrdersUnsub) {
@@ -144,7 +205,9 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${idToken}`
+            'Authorization': `Bearer ${idToken}`,
+            'X-App-Target': 'DELIVERY',
+            'X-App-Source': 'DELIVERY'
           },
           body: JSON.stringify({
             targetApp: 'DELIVERY'
@@ -236,6 +299,9 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     });
 
     return () => {
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleResume);
+      }
       unsubAuth();
       if (activeOrdersUnsub) {
         activeOrdersUnsub();
@@ -267,6 +333,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     // Case 1: Switching to OFFLINE — Always allowed immediately
     if (!next) {
       SoundAlertEngine.stopAlarm();
+      stopContinuousGpsWatch();
       set({ isOnline: false, isGpsLocked: false, isGpsActive: false, gpsStatus: 'OFFLINE' });
       const uid = get().user?.uid;
       if (supabase && uid) {
@@ -298,6 +365,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
 
     if (isFresh) {
       set({ isGpsLocked: false, gpsStatus: 'GRANTED', isGpsActive: true });
+      startContinuousGpsWatch(get, set);
       try {
         await fetchApi('/api/delivery/rider/status', {
           method: 'POST',
@@ -318,6 +386,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
           const { latitude, longitude, heading, speed, accuracy } = pos.coords;
           await get().updateGpsLocation(latitude, longitude, heading || 0, speed || 0, accuracy || 0);
           set({ isGpsLocked: false, gpsStatus: 'GRANTED', isGpsActive: true });
+          startContinuousGpsWatch(get, set);
 
           try {
             await fetchApi('/api/delivery/rider/status', {
@@ -367,6 +436,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
           const { latitude, longitude, heading, speed, accuracy } = pos.coords;
           await get().updateGpsLocation(latitude, longitude, heading || 0, speed || 0, accuracy || 0);
           set({ isGpsLocked: false, gpsStatus: 'GRANTED', isGpsActive: true });
+          startContinuousGpsWatch(get, set);
 
           try {
             await fetchApi('/api/delivery/rider/status', {
