@@ -5,16 +5,39 @@ export const PRODUCTION_BACKEND_URL = "https://olivepizza-owner.onrender.com";
 export const DEV_BACKEND_URL = "http://localhost:5000";
 
 export function getApiBaseUrl(): string {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL.replace(/\/+$/, '');
+  }
+  if (import.meta.env.VITE_BACKEND_URL) {
+    return import.meta.env.VITE_BACKEND_URL.replace(/\/+$/, '');
+  }
   if (Capacitor.isNativePlatform()) {
     return PRODUCTION_BACKEND_URL;
   }
-  if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL;
-  }
-  if (import.meta.env.VITE_BACKEND_URL) {
-    return import.meta.env.VITE_BACKEND_URL;
+  if (
+    import.meta.env.DEV &&
+    typeof window !== 'undefined' &&
+    window.location.protocol !== 'capacitor:' &&
+    window.location.protocol !== 'ionic:'
+  ) {
+    return "";
   }
   return PRODUCTION_BACKEND_URL;
+}
+
+export function getWebSocketUrl(): string {
+  const base = getApiBaseUrl() || PRODUCTION_BACKEND_URL;
+  if (base.startsWith('https://')) {
+    return base.replace('https://', 'wss://') + '/ws';
+  }
+  if (base.startsWith('http://')) {
+    return base.replace('http://', 'ws://') + '/ws';
+  }
+  if (typeof window !== 'undefined' && window.location.host) {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${window.location.host}/ws`;
+  }
+  return PRODUCTION_BACKEND_URL.replace('https://', 'wss://') + '/ws';
 }
 
 export function getApiUrl(endpoint: string = ''): string {

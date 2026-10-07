@@ -1,4 +1,4 @@
-﻿import UIKit
+import UIKit
 import Capacitor
 import UserNotifications
 
@@ -176,6 +176,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("DELIVERY", forHTTPHeaderField: "X-App-Target")
+        request.setValue("DELIVERY", forHTTPHeaderField: "X-App-Source")
         request.setValue("notif_ios_\(UUID().uuidString)", forHTTPHeaderField: "Idempotency-Key")
 
         let payload: [String: Any] = [

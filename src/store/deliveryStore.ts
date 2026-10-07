@@ -101,7 +101,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
   restrictedReason: null,
   restrictedEmail: null,
   clearRestricted: () => set({ restrictedReason: null, restrictedEmail: null }),
-  isOnline: true,
+  isOnline: false,
   
   activeOrders: [],
   isOrdersLoading: true,
@@ -210,7 +210,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
             branchName: u.branchName || 'Olive Pizza',
             branchAddress: u.branchAddress || '',
             branchPhone: u.branchPhone || '',
-            isOnline: true,
+            isOnline: false,
             workingSchedule: u.workingSchedule || [],
             joiningDate: u.joiningDate || u.createdAt || new Date().toISOString(),
             emergencyContact: u.emergencyContact || { name: 'Operations Support', phone: u.branchPhone || '' },
@@ -222,7 +222,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
             user: firebaseUser,
             riderProfile: profile,
             userRole: profile.role,
-            isOnline: true,
+            isOnline: false,
             isAuthChecking: false,
             isAuthorized: true,
             authStatus: 'APPROVED',
@@ -354,12 +354,11 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     });
 
     const started = await locationService.startTracking();
-    if (started) {
-      set({ isOnline: true, isGpsLocked: false, gpsStatus: 'ACTIVE', isGpsActive: true });
+    if (started && locationService.getState() === 'ACTIVE') {
       const currentLoc = locationService.getLastCoordinates();
-      if (currentLoc) {
+      if (currentLoc && typeof currentLoc.latitude === 'number' && typeof currentLoc.longitude === 'number') {
         try {
-          await fetchApi('/api/delivery/rider/status', {
+          const res = await fetchApi('/api/delivery/rider/status', {
             method: 'POST',
             body: JSON.stringify({
               isOnline: true,
@@ -368,19 +367,24 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
               accuracy: currentLoc.accuracy
             })
           });
-        } catch {}
+          if (res?.success !== false) {
+            set({ isOnline: true, isGpsLocked: false, gpsStatus: 'ACTIVE', isGpsActive: true });
+            return true;
+          }
+        } catch (e) {
+          console.warn('[DeliveryStore] Online status sync failed:', e);
+        }
       }
-      return true;
-    } else {
-      const state = locationService.getState();
-      set({
-        isOnline: true,
-        isGpsLocked: true,
-        gpsStatus: state,
-        isGpsActive: false
-      });
-      return false;
     }
+
+    const state = locationService.getState();
+    set({
+      isOnline: false,
+      isGpsLocked: true,
+      gpsStatus: state,
+      isGpsActive: false
+    });
+    return false;
   },
 
   setGpsStatus: (status, isLocked) => {
