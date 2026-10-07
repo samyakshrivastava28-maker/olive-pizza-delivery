@@ -24,6 +24,8 @@ import type {
   MonthlyDeliverySummary 
 } from '../types/delivery';
 
+import { locationService, type DeviceLocationState } from '../services/LocationService';
+
 interface DeliveryState {
   user: User | null;
   riderProfile: RiderProfile | null;
@@ -51,10 +53,10 @@ interface DeliveryState {
   // GPS state & enforcement
   currentLocation: { lat: number; lng: number } | null;
   isGpsActive: boolean;
-  gpsStatus: 'GRANTED' | 'DENIED' | 'UNAVAILABLE' | 'STALE' | 'INITIALIZING' | 'OFFLINE';
+  gpsStatus: DeviceLocationState;
   lastGpsFix: number | null;
   isGpsLocked: boolean;
-  setGpsStatus: (status: 'GRANTED' | 'DENIED' | 'UNAVAILABLE' | 'STALE' | 'INITIALIZING' | 'OFFLINE', isLocked?: boolean) => void;
+  setGpsStatus: (status: DeviceLocationState, isLocked?: boolean) => void;
   requestGpsUnlock: () => Promise<boolean>;
 
   // Actions
@@ -77,31 +79,6 @@ interface DeliveryState {
 }
 
 let activeOrdersUnsub: Unsubscribe | null = null;
-let activeGpsWatchId: number | null = null;
-
-const startContinuousGpsWatch = (get: () => DeliveryState, set: any) => {
-  if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return;
-  if (activeGpsWatchId !== null) return;
-
-  activeGpsWatchId = navigator.geolocation.watchPosition(
-    async (pos) => {
-      const { latitude, longitude, heading, speed, accuracy } = pos.coords;
-      await get().updateGpsLocation(latitude, longitude, heading || 0, speed || 0, accuracy || 0);
-      set({ isGpsLocked: false, gpsStatus: 'GRANTED', isGpsActive: true });
-    },
-    (err) => {
-      console.warn('[DeliveryStore] Continuous GPS watch notice:', err.message);
-    },
-    { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
-  );
-};
-
-const stopContinuousGpsWatch = () => {
-  if (typeof navigator !== 'undefined' && 'geolocation' in navigator && activeGpsWatchId !== null) {
-    navigator.geolocation.clearWatch(activeGpsWatchId);
-    activeGpsWatchId = null;
-  }
-};
 
 const DEFAULT_TODAY_STATS: RiderShiftStats = {
   assigned: 0,
@@ -137,7 +114,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
   
   currentLocation: null,
   isGpsActive: false,
-  gpsStatus: 'INITIALIZING',
+  gpsStatus: 'UNKNOWN',
   lastGpsFix: null,
   isGpsLocked: false,
 
@@ -333,7 +310,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     // Case 1: Switching to OFFLINE — Always allowed immediately
     if (!next) {
       SoundAlertEngine.stopAlarm();
-      stopContinuousGpsWatch();
+      locationService.stopTracking();
       set({ isOnline: false, isGpsLocked: false, isGpsActive: false, gpsStatus: 'OFFLINE' });
       const uid = get().user?.uid;
       if (supabase && uid) {
@@ -351,119 +328,97 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     }
 
     // Case 2: Switching to ONLINE — GPS is strictly MANDATORY
-    set({ isOnline: true });
+    const uid = get().user?.uid;
+    const activeOrder = get().activeOrders[0];
 
-    if (!('geolocation' in navigator)) {
-      set({ isGpsLocked: true, gpsStatus: 'UNAVAILABLE', isGpsActive: false });
+    // Wire up callbacks into LocationService
+    locationService.setCallbacks({
+      riderId: uid,
+      getActiveOrderId: () => get().activeOrders[0]?.id || null,
+      onLocationUpdate: async (coords) => {
+        set({
+          currentLocation: { lat: coords.latitude, lng: coords.longitude },
+          isGpsActive: true,
+          lastGpsFix: coords.timestamp,
+          gpsStatus: 'ACTIVE',
+          isGpsLocked: false
+        });
+      },
+      onStateChange: (state) => {
+        set((s) => ({
+          gpsStatus: state,
+          isGpsLocked: s.isOnline && (state === 'PERMISSION_DENIED' || state === 'SERVICE_DISABLED' || state === 'STALE'),
+          isGpsActive: state === 'ACTIVE'
+        }));
+      }
+    });
+
+    const started = await locationService.startTracking();
+    if (started) {
+      set({ isOnline: true, isGpsLocked: false, gpsStatus: 'ACTIVE', isGpsActive: true });
+      const currentLoc = locationService.getLastCoordinates();
+      if (currentLoc) {
+        try {
+          await fetchApi('/api/delivery/rider/status', {
+            method: 'POST',
+            body: JSON.stringify({
+              isOnline: true,
+              latitude: currentLoc.latitude,
+              longitude: currentLoc.longitude,
+              accuracy: currentLoc.accuracy
+            })
+          });
+        } catch {}
+      }
+      return true;
+    } else {
+      const state = locationService.getState();
+      set({
+        isOnline: true,
+        isGpsLocked: true,
+        gpsStatus: state,
+        isGpsActive: false
+      });
       return false;
     }
-
-    // Check if we have an active, fresh GPS fix (<60 seconds old)
-    const lastFix = get().lastGpsFix;
-    const currentLoc = get().currentLocation;
-    const isFresh = lastFix && Date.now() - lastFix < 60000 && currentLoc;
-
-    if (isFresh) {
-      set({ isGpsLocked: false, gpsStatus: 'GRANTED', isGpsActive: true });
-      startContinuousGpsWatch(get, set);
-      try {
-        await fetchApi('/api/delivery/rider/status', {
-          method: 'POST',
-          body: JSON.stringify({
-            isOnline: true,
-            latitude: currentLoc.lat,
-            longitude: currentLoc.lng
-          })
-        });
-      } catch {}
-      return true;
-    }
-
-    // Attempt high-accuracy GPS fix before allowing full operation
-    return new Promise<boolean>((resolve) => {
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          const { latitude, longitude, heading, speed, accuracy } = pos.coords;
-          await get().updateGpsLocation(latitude, longitude, heading || 0, speed || 0, accuracy || 0);
-          set({ isGpsLocked: false, gpsStatus: 'GRANTED', isGpsActive: true });
-          startContinuousGpsWatch(get, set);
-
-          try {
-            await fetchApi('/api/delivery/rider/status', {
-              method: 'POST',
-              body: JSON.stringify({
-                isOnline: true,
-                latitude,
-                longitude,
-                accuracy
-              })
-            });
-          } catch {}
-
-          resolve(true);
-        },
-        (err) => {
-          console.warn('[DeliveryStore] GPS fix failed when going online:', err.message);
-          set({
-            isGpsLocked: true,
-            gpsStatus: err.code === 1 ? 'DENIED' : 'UNAVAILABLE',
-            isGpsActive: false
-          });
-          resolve(false);
-        },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-      );
-    });
   },
 
   setGpsStatus: (status, isLocked) => {
     set((state) => ({
       gpsStatus: status,
-      isGpsLocked: isLocked !== undefined ? isLocked : (state.isOnline && (status === 'DENIED' || status === 'UNAVAILABLE' || status === 'STALE')),
-      isGpsActive: status === 'GRANTED'
+      isGpsLocked: isLocked !== undefined ? isLocked : (state.isOnline && (status === 'PERMISSION_DENIED' || status === 'SERVICE_DISABLED' || status === 'STALE')),
+      isGpsActive: status === 'ACTIVE'
     }));
   },
 
   requestGpsUnlock: async () => {
-    if (!('geolocation' in navigator)) {
-      set({ isGpsLocked: true, gpsStatus: 'UNAVAILABLE', isGpsActive: false });
+    const started = await locationService.startTracking();
+    if (started) {
+      set({ isGpsLocked: false, gpsStatus: 'ACTIVE', isGpsActive: true });
+      const currentLoc = locationService.getLastCoordinates();
+      if (currentLoc) {
+        try {
+          await fetchApi('/api/delivery/rider/status', {
+            method: 'POST',
+            body: JSON.stringify({
+              isOnline: true,
+              latitude: currentLoc.latitude,
+              longitude: currentLoc.longitude,
+              accuracy: currentLoc.accuracy
+            })
+          });
+        } catch {}
+      }
+      return true;
+    } else {
+      const state = locationService.getState();
+      set({
+        isGpsLocked: true,
+        gpsStatus: state,
+        isGpsActive: false
+      });
       return false;
     }
-
-    return new Promise<boolean>((resolve) => {
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          const { latitude, longitude, heading, speed, accuracy } = pos.coords;
-          await get().updateGpsLocation(latitude, longitude, heading || 0, speed || 0, accuracy || 0);
-          set({ isGpsLocked: false, gpsStatus: 'GRANTED', isGpsActive: true });
-          startContinuousGpsWatch(get, set);
-
-          try {
-            await fetchApi('/api/delivery/rider/status', {
-              method: 'POST',
-              body: JSON.stringify({
-                isOnline: true,
-                latitude,
-                longitude,
-                accuracy
-              })
-            });
-          } catch {}
-
-          resolve(true);
-        },
-        (err) => {
-          console.warn('[DeliveryStore] GPS unlock retry failed:', err.message);
-          set({
-            isGpsLocked: true,
-            gpsStatus: err.code === 1 ? 'DENIED' : 'UNAVAILABLE',
-            isGpsActive: false
-          });
-          resolve(false);
-        },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-      );
-    });
   },
 
   subscribeToActiveOrders: (riderUid: string) => {
@@ -731,7 +686,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
       currentLocation: { lat, lng },
       isGpsActive: true,
       lastGpsFix: now,
-      gpsStatus: 'GRANTED',
+      gpsStatus: 'ACTIVE',
       isGpsLocked: false
     });
     const uid = get().user?.uid;

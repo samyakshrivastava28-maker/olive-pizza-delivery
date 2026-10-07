@@ -15,8 +15,6 @@ export const DeliveryLayout: React.FC = () => {
     isOnline,
     isGpsLocked,
     gpsStatus,
-    lastGpsFix,
-    setGpsStatus,
     requestGpsUnlock,
     toggleOnlineStatus,
     activeOrders,
@@ -24,55 +22,11 @@ export const DeliveryLayout: React.FC = () => {
 
   const [retryingGps, setRetryingGps] = useState(false);
 
-  // Geolocation active watcher
+  // When online and authorized, ensure LocationService is actively tracking
   useEffect(() => {
-    if (!isAuthorized) return;
-
-    if ('geolocation' in navigator) {
-      const watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          updateGpsLocation(
-            pos.coords.latitude,
-            pos.coords.longitude,
-            pos.coords.heading || 0,
-            pos.coords.speed || 0,
-            pos.coords.accuracy || 0
-          );
-        },
-        (err) => {
-          console.warn('[GPS] Device geolocation error or permission denied:', err.message);
-          if (isOnline) {
-            setGpsStatus(err.code === 1 ? 'DENIED' : 'UNAVAILABLE', true);
-          }
-        },
-        { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
-      );
-
-      return () => navigator.geolocation.clearWatch(watchId);
-    } else {
-      console.warn('[GPS] Geolocation API not supported on this browser/device');
-      if (isOnline) {
-        setGpsStatus('UNAVAILABLE', true);
-      }
+    if (isAuthorized && isOnline) {
+      requestGpsUnlock();
     }
-  }, [isAuthorized, isOnline, updateGpsLocation, setGpsStatus]);
-
-  // Periodic GPS Staleness Watcher: If online and no GPS fix in > 90s, lock UI
-  useEffect(() => {
-    if (!isAuthorized || !isOnline) return;
-
-    const interval = setInterval(() => {
-      const state = useDeliveryStore.getState();
-      if (state.isOnline && !state.isGpsLocked && state.lastGpsFix) {
-        const ageMs = Date.now() - state.lastGpsFix;
-        if (ageMs > 90000) {
-          console.warn(`[GPS] Signal stale (${Math.round(ageMs / 1000)}s without fix). Locking operational UI.`);
-          state.setGpsStatus('STALE', true);
-        }
-      }
-    }, 15000);
-
-    return () => clearInterval(interval);
   }, [isAuthorized, isOnline]);
 
   const handleRetryGps = async () => {
@@ -140,10 +94,11 @@ export const DeliveryLayout: React.FC = () => {
               GPS Location Required
             </span>
             <h2 className="text-xl font-black text-white">
-              {gpsStatus === 'DENIED' && 'Location Permission Blocked'}
-              {gpsStatus === 'UNAVAILABLE' && 'Turn On Device Location'}
+              {gpsStatus === 'PERMISSION_DENIED' && 'Location Permission Blocked'}
+              {gpsStatus === 'SERVICE_DISABLED' && 'Turn On Device Location'}
+              {gpsStatus === 'ACQUIRING' && 'Acquiring GPS Satellite Lock...'}
               {gpsStatus === 'STALE' && 'GPS Signal Lost'}
-              {gpsStatus !== 'DENIED' && gpsStatus !== 'UNAVAILABLE' && gpsStatus !== 'STALE' && 'High Accuracy GPS Required'}
+              {gpsStatus !== 'PERMISSION_DENIED' && gpsStatus !== 'SERVICE_DISABLED' && gpsStatus !== 'STALE' && gpsStatus !== 'ACQUIRING' && 'High Accuracy GPS Required'}
             </h2>
 
             <p className="text-xs text-slate-300 mt-2 leading-relaxed">
