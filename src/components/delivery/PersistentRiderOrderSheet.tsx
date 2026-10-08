@@ -291,26 +291,11 @@ export const PersistentRiderOrderSheet: React.FC<PersistentRiderOrderSheetProps>
     updated[index] = digit;
     setOtpValues(updated);
     setOtpError(null);
+    setIsOtpVerified(false);
 
     // Auto focus next
     if (digit && index < 3) {
       otpInputRefs[index + 1].current?.focus();
-    }
-
-    // Check full 4 digits
-    const fullOtp = updated.join('');
-    if (fullOtp.length === 4) {
-      const expectedOtp = String((order as any).deliveryOtp || (order as any).otp || '').trim();
-      if (expectedOtp && expectedOtp !== fullOtp) {
-        setOtpError('Invalid OTP code. Please ask customer for correct 4-digit PIN.');
-        setIsOtpVerified(false);
-      } else {
-        setIsOtpVerified(true);
-        setOtpError(null);
-        toast.success('Customer OTP Verified! 🔐');
-      }
-    } else {
-      setIsOtpVerified(false);
     }
   };
 
@@ -446,11 +431,10 @@ export const PersistentRiderOrderSheet: React.FC<PersistentRiderOrderSheetProps>
             return;
           }
 
-          // Check OTP if expected
-          const expectedOtp = String((order as any).deliveryOtp || (order as any).otp || '').trim();
-          const enteredOtp = otpValues.join('');
-          if (expectedOtp && !isOtpVerified) {
-            toast.error('Please enter the customer 4-digit delivery PIN first!');
+          const enteredOtp = otpValues.join('').trim();
+          if (enteredOtp.length > 0 && enteredOtp.length < 4) {
+            setOtpError('Please enter the complete 4-digit delivery PIN.');
+            toast.error('Please enter the complete 4-digit delivery PIN!');
             setSnap('full');
             return;
           }
@@ -461,9 +445,16 @@ export const PersistentRiderOrderSheet: React.FC<PersistentRiderOrderSheetProps>
           });
 
           if (res.success) {
+            setIsOtpVerified(true);
+            setOtpError(null);
             toast.success('🎉 Delivery completed successfully!');
             setSnap('minimized');
           } else {
+            setIsOtpVerified(false);
+            if (res.error && (res.error.toLowerCase().includes('otp') || res.error.toLowerCase().includes('pin'))) {
+              setOtpError(res.error);
+              setSnap('full');
+            }
             toast.error(res.error || 'Failed to complete delivery.');
           }
           break;
