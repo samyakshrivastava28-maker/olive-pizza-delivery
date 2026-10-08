@@ -2,12 +2,12 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDeliveryStore } from '../store/deliveryStore';
 import { db } from '../lib/firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { fetchApi } from '../lib/api';
 import { NotificationPermissionManager } from '../lib/NotificationPermissionManager';
 import { SoundAlertEngine } from '../lib/SoundAlertEngine';
 import { NotificationDeduplicator } from '../lib/NotificationDeduplicator';
-import { Bell, Volume2, VolumeX, CheckCircle, X, MapPin, Navigation, Phone, ShoppingBag, AlertTriangle } from 'lucide-react';
+import { Bell, Volume2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 import { PushNotifications } from '@capacitor/push-notifications';
@@ -15,9 +15,8 @@ import { Capacitor } from '@capacitor/core';
 
 export default function DeliveryPushNotificationManager() {
   const navigate = useNavigate();
-  const { user, isAuthorized, isOnline, acceptDelivery, declineDelivery } = useDeliveryStore();
+  const { user, isAuthorized, isOnline } = useDeliveryStore();
   const [showPromptBanner, setShowPromptBanner] = useState(false);
-  const [urgentAssignment, setUrgentAssignment] = useState<any | null>(null);
   const isRegisteredRef = useRef(false);
   const registeredTokenRef = useRef<string | null>(null);
 
@@ -115,18 +114,43 @@ export default function DeliveryPushNotificationManager() {
           console.error('[Delivery PushManager] Registration error:', error);
         });
 
-        PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        PushNotifications.addListener('pushNotificationReceived', async (notification) => {
           console.log('[Delivery PushManager] Push received in foreground:', notification);
           SoundAlertEngine.startContinuousAlarm();
           const data = (notification.data || {}) as Record<string, any>;
+          const orderId = String(data.orderId || data.order_id || data.id || '');
+
+          // INVARIANT (PHASES 28-30): Push notification payload cannot be treated as authoritative order data.
+          // Notification only signals WHICH order changed; authoritative order data must be verified against
+          // Firestore / backend before being used for delivery operations.
+          let authoritativeOrder: any = null;
+          if (orderId) {
+            try {
+              const orderDocSnap = await getDoc(doc(db, 'orders', orderId));
+              if (orderDocSnap.exists()) {
+                authoritativeOrder = { id: orderDocSnap.id, ...orderDocSnap.data() };
+              }
+            } catch (fetchErr) {
+              console.warn('[Delivery PushManager] Could not verify order in Firestore immediately:', fetchErr);
+            }
+          }
+
           let parsedOrder: any = null;
           if (data.fullOrderJson) {
             try {
               parsedOrder = typeof data.fullOrderJson === 'string' ? JSON.parse(data.fullOrderJson) : data.fullOrderJson;
             } catch {}
           }
-          if (parsedOrder || data.orderId) {
-            setUrgentAssignment(parsedOrder || data);
+
+          // Use verified Firestore order if available; otherwise use payload with unverified flag
+          const orderObj = authoritativeOrder || (parsedOrder ? { ...parsedOrder, _unverifiedNotificationPayload: true } : data);
+          const effectiveId = orderObj?.id || orderObj?.orderId || orderId;
+          if (effectiveId) {
+            useDeliveryStore.getState().addOrUpdateActiveOrder({ ...orderObj, id: effectiveId });
+            toast.success(`🛵 New delivery assigned #${orderObj.orderNumber || effectiveId.slice(-6).toUpperCase()}!`, {
+              duration: 5000,
+              id: `toast-${effectiveId}`
+            });
           }
         });
 
@@ -283,7 +307,11 @@ export default function DeliveryPushNotificationManager() {
             const eventId = `delivery_assign:${order.id}:${order.version || 1}`;
             if (NotificationDeduplicator.shouldProcess(eventId)) {
               SoundAlertEngine.startContinuousAlarm();
-              setUrgentAssignment(order);
+              useDeliveryStore.getState().addOrUpdateActiveOrder(order);
+              toast.success(`🛵 New delivery assigned #${order.orderNumber || order.id.slice(-6).toUpperCase()}!`, {
+                duration: 5000,
+                id: `toast-${order.id}`
+              });
             }
           }
         }
@@ -294,31 +322,6 @@ export default function DeliveryPushNotificationManager() {
 
     return () => unsubscribe();
   }, [user, isAuthorized, isOnline]);
-
-  const handleAccept = async (orderId: string) => {
-    SoundAlertEngine.stopAlarm();
-    setUrgentAssignment(null);
-    const ok = await acceptDelivery(orderId);
-    if (ok) {
-      SoundAlertEngine.playSound('order_accepted');
-      toast.success('Assignment accepted! Navigate to restaurant.');
-    } else {
-      toast.error('Failed to accept delivery.');
-    }
-  };
-
-  const handleDecline = async (orderId: string) => {
-    SoundAlertEngine.stopAlarm();
-    setUrgentAssignment(null);
-    const ok = await declineDelivery(orderId);
-    if (ok) {
-      toast('Delivery assignment declined', { icon: 'ℹ️' });
-    }
-  };
-
-  const handleSilence = () => {
-    SoundAlertEngine.stopAlarm();
-  };
 
   return (
     <>
@@ -353,179 +356,6 @@ export default function DeliveryPushNotificationManager() {
                   Later
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Critical Full-Information Delivery Assignment Modal */}
-      {urgentAssignment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-3 sm:p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-md max-h-[92vh] flex flex-col bg-[#0F172A] border-2 border-amber-500 rounded-3xl p-5 sm:p-6 shadow-2xl shadow-amber-500/25 text-white relative overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-amber-400 animate-ping" />
-                <span className="text-xs font-black tracking-wider uppercase text-amber-400">New Delivery Assignment!</span>
-              </div>
-              <button 
-                onClick={handleSilence} 
-                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition flex items-center gap-1 text-xs"
-                title="Silence Alarm"
-              >
-                <VolumeX className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Scrollable Content */}
-            <div className="py-4 space-y-3 overflow-y-auto pr-1 flex-1">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-2xl font-black text-white">
-                    #{urgentAssignment.orderNumber || urgentAssignment.dailyOrderNumber || urgentAssignment.id?.slice(-6).toUpperCase()}
-                  </h3>
-                  <span className="text-xs text-slate-400">
-                    {urgentAssignment.items?.length || 1} items • {urgentAssignment.paymentMethod || 'COD'}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-black text-emerald-400">
-                    ₹{urgentAssignment.pricing?.total || urgentAssignment.finalTotal || urgentAssignment.totalAmount}
-                  </div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Order Value</span>
-                </div>
-              </div>
-
-              {/* Cash Collection Banner */}
-              {(() => {
-                const isPaid = (urgentAssignment.payment?.status || urgentAssignment.paymentStatus || '').toUpperCase() === 'PAID' ||
-                               (urgentAssignment.paymentMethod || '').toUpperCase() === 'ONLINE' ||
-                               (urgentAssignment.paymentMethod || '').toUpperCase() === 'PAID';
-                const cashToCollect = isPaid ? 0 : (urgentAssignment.payment?.cashToCollect !== undefined ? urgentAssignment.payment.cashToCollect : (urgentAssignment.finalTotal || urgentAssignment.totalAmount || 0));
-
-                return (
-                  <div className={`p-2.5 rounded-2xl border text-center font-black text-xs tracking-wide flex items-center justify-center gap-2 ${
-                    isPaid
-                      ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
-                      : 'bg-amber-950/40 border-amber-500/40 text-amber-300 animate-pulse'
-                  }`}>
-                    {isPaid ? (
-                      <>
-                        <CheckCircle className="w-4 h-4 text-emerald-400" />
-                        <span>ONLINE PAID: DO NOT COLLECT CASH</span>
-                      </>
-                    ) : (
-                      <>
-                        <AlertTriangle className="w-4 h-4 text-amber-400" />
-                        <span>CASH TO COLLECT: ₹{cashToCollect}</span>
-                      </>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* Pickup and Delivery location */}
-              <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2.5">
-                <div className="flex items-start gap-2 text-xs">
-                  <Navigation className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="text-slate-200 block">Pickup: Olive Pizza</strong>
-                    <span className="text-[11px] text-slate-400">Kitchen counter</span>
-                  </div>
-                </div>
-
-                <div className="flex items-start justify-between gap-2 text-xs border-t border-slate-800/80 pt-2">
-                  <div className="flex items-start gap-2 min-w-0">
-                    <MapPin className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                    <div>
-                      <strong className="text-slate-200 block">Deliver to: {urgentAssignment.customerName || urgentAssignment.customer?.name || 'Customer'}</strong>
-                      <span className="text-[11px] text-slate-400 line-clamp-2">
-                        {typeof urgentAssignment.deliveryAddress === 'string' 
-                          ? urgentAssignment.deliveryAddress 
-                          : urgentAssignment.deliveryAddress?.addressLine || urgentAssignment.customer?.address || 'Customer Address'}
-                      </span>
-                    </div>
-                  </div>
-                  {(() => {
-                    const lat = urgentAssignment.lat || urgentAssignment.customer?.lat || urgentAssignment.deliveryAddress?.coordinates?.lat;
-                    const lng = urgentAssignment.lng || urgentAssignment.customer?.lng || urgentAssignment.deliveryAddress?.coordinates?.lng;
-                    const addressStr = typeof urgentAssignment.deliveryAddress === 'string' ? urgentAssignment.deliveryAddress : urgentAssignment.deliveryAddress?.addressLine || '';
-                    const mapUrl = lat && lng ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressStr || 'Olive Pizza')}`;
-
-                    return (
-                      <a
-                        href={mapUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-2 py-1 rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/30 text-[10px] font-bold flex items-center gap-1 shrink-0 hover:bg-sky-500/30 transition"
-                      >
-                        <Navigation className="w-3 h-3" /> Map
-                      </a>
-                    );
-                  })()}
-                </div>
-
-                {/* Call Customer 1-tap Button */}
-                {(urgentAssignment.contactPhone || urgentAssignment.customerPhone || urgentAssignment.customer?.phone) && (
-                  <div className="pt-2 border-t border-slate-800/80 flex justify-end">
-                    <a
-                      href={`tel:${urgentAssignment.contactPhone || urgentAssignment.customerPhone || urgentAssignment.customer?.phone}`}
-                      className="px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center gap-1.5 hover:bg-emerald-500/30 transition"
-                    >
-                      <Phone className="w-3.5 h-3.5" /> Call Customer
-                    </a>
-                  </div>
-                )}
-
-                {/* Customer Instructions */}
-                {(urgentAssignment.deliveryInstructions || urgentAssignment.customerNotes || urgentAssignment.customer?.instructions) && (
-                  <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-[11px] leading-relaxed">
-                    <strong className="block text-amber-300 font-bold mb-0.5">⚠️ Delivery Note:</strong>
-                    {urgentAssignment.deliveryInstructions || urgentAssignment.customerNotes || urgentAssignment.customer?.instructions}
-                  </div>
-                )}
-              </div>
-
-              {/* Items List (No truncation) */}
-              <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1.5 max-h-36 overflow-y-auto">
-                <div className="text-[11px] font-bold text-slate-400 flex items-center gap-1.5 border-b border-slate-800 pb-1">
-                  <ShoppingBag className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Items to Deliver ({urgentAssignment.items?.length || 0})</span>
-                </div>
-                {Array.isArray(urgentAssignment.items) && urgentAssignment.items.map((it: any, idx: number) => {
-                  const sizeStr = it.size || it.selectedSize;
-                  const addOns = Array.isArray(it.addOns || it.addons) ? (it.addOns || it.addons) : [];
-
-                  return (
-                    <div key={idx} className="text-xs text-slate-200 py-0.5 border-b border-slate-800/50 last:border-b-0">
-                      <div className="flex justify-between font-semibold">
-                        <span>{it.quantity || 1}× {it.name || it.title}</span>
-                      </div>
-                      {(sizeStr || addOns.length > 0) && (
-                        <div className="text-[10px] text-slate-400">
-                          {[sizeStr ? `Size: ${sizeStr}` : null, addOns.length > 0 ? `+${addOns.length} add-ons` : null].filter(Boolean).join(' • ')}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Atomic Action Buttons */}
-            <div className="shrink-0 flex items-center gap-3 pt-2 border-t border-slate-800/80">
-              <button
-                onClick={() => handleAccept(urgentAssignment.id)}
-                className="flex-1 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm tracking-wide transition shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2 active:scale-95"
-              >
-                <CheckCircle className="w-5 h-5" /> ACCEPT
-              </button>
-              <button
-                onClick={() => handleDecline(urgentAssignment.id)}
-                className="px-5 py-3.5 rounded-2xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-400 font-bold text-sm transition active:scale-95"
-              >
-                DECLINE
-              </button>
             </div>
           </div>
         </div>

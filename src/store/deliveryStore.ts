@@ -80,6 +80,7 @@ interface DeliveryState {
   checkCodPaymentStatus: (orderId: string) => Promise<{ success: boolean; isPaid: boolean; paymentStatus?: string; error?: string }>;
   updateGpsLocation: (lat: number, lng: number, heading?: number, speed?: number, accuracy?: number) => Promise<void>;
   updateRiderPhone: (phone: string) => void;
+  addOrUpdateActiveOrder: (order: Partial<DeliveryOrder> & { id: string }) => void;
 }
 
 let activeOrdersUnsub: Unsubscribe | null = null;
@@ -505,6 +506,24 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         activeOrdersUnsub = null;
       }
     };
+  },
+
+  addOrUpdateActiveOrder: (order) => {
+    set((state) => {
+      const exists = state.activeOrders.some((o) => o.id === order.id);
+      if (exists) {
+        return {
+          activeOrders: state.activeOrders.map((o) =>
+            o.id === order.id ? ({ ...o, ...order } as DeliveryOrder) : o
+          ),
+          isOrdersLoading: false,
+        };
+      }
+      return {
+        activeOrders: [order as DeliveryOrder, ...state.activeOrders],
+        isOrdersLoading: false,
+      };
+    });
   },
 
   fetchTodayStats: async () => {
