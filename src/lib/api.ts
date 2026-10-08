@@ -78,85 +78,164 @@ function getOrGenerateDeviceId(): string {
   }
 }
 
-export async function fetchApi<T = any>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
-  const primaryUrl = getApiUrl(endpoint);
-  const headers = new Headers(options.headers || {});
+export interface CacheOptions {
+  ttlMs?: number;
+  forceRefresh?: boolean;
+}
 
-  if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
-    headers.set('Content-Type', 'application/json');
+const inFlightRequests = new Map<string, Promise<any>>();
+const memoryCache = new Map<string, { data: any; expiresAt: number }>();
+
+export function invalidateDeliveryCache(pattern?: string | RegExp): void {
+  if (!pattern) {
+    memoryCache.clear();
+    return;
   }
-
-  if (!headers.has('X-App-Target')) {
-    headers.set('X-App-Target', 'DELIVERY');
-  }
-  if (!headers.has('X-App-Source')) {
-    headers.set('X-App-Source', 'DELIVERY');
-  }
-
-  if (!headers.has('X-Device-Id')) {
-    headers.set('X-Device-Id', getOrGenerateDeviceId());
-  }
-
-  const token = await getCurrentAuthToken();
-  if (token && !headers.has('Authorization')) {
-    headers.set('Authorization', 'Bearer ' + token);
-  }
-
-  const config: RequestInit = {
-    ...options,
-    headers,
-  };
-
-  try {
-    let res = await fetch(primaryUrl, config);
-
-    // If proxy failed on local dev, fallback directly to backend URL
-    if (!res.ok && primaryUrl.startsWith('/')) {
-      try {
-        const directUrl = DEV_BACKEND_URL + primaryUrl;
-        const fallbackRes = await fetch(directUrl, config);
-        if (fallbackRes.ok) {
-          res = fallbackRes;
-        }
-      } catch {}
+  for (const key of memoryCache.keys()) {
+    if (typeof pattern === 'string' ? key.includes(pattern) : pattern.test(key)) {
+      memoryCache.delete(key);
     }
+  }
+}
 
-    if (res.status === 429) {
+export async function fetchApi<T = any>(
+  endpoint: string,
+  options: RequestInit = {},
+  cacheOptions?: CacheOptions
+): Promise<ApiResponse<T>> {
+  const method = (options.method || 'GET').toUpperCase();
+  const isGet = method === 'GET';
+  const cleanKey = `GET:${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+  const ttlMs = cacheOptions?.ttlMs ?? 0;
+  const forceRefresh = cacheOptions?.forceRefresh ?? false;
+
+  if (isGet && !forceRefresh && ttlMs > 0) {
+    const cached = memoryCache.get(cleanKey);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.data;
+    }
+  }
+
+  if (isGet && !forceRefresh && inFlightRequests.has(cleanKey)) {
+    return inFlightRequests.get(cleanKey);
+  }
+
+  const executionPromise = (async () => {
+    try {
+      const primaryUrl = getApiUrl(endpoint);
+      const headers = new Headers(options.headers || {});
+
+      if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
+        headers.set('Content-Type', 'application/json');
+      }
+
+      if (!headers.has('X-App-Target')) {
+        headers.set('X-App-Target', 'DELIVERY');
+      }
+      if (!headers.has('X-App-Source')) {
+        headers.set('X-App-Source', 'DELIVERY');
+      }
+
+      if (!headers.has('X-Device-Id')) {
+        headers.set('X-Device-Id', getOrGenerateDeviceId());
+      }
+
+      const token = await getCurrentAuthToken();
+      if (token && !headers.has('Authorization')) {
+        headers.set('Authorization', 'Bearer ' + token);
+      }
+
+      const config: RequestInit = {
+        ...options,
+        headers,
+      };
+
+      let res = await fetch(primaryUrl, config);
+
+      if (!res.ok && primaryUrl.startsWith('/')) {
+        try {
+          const directUrl = DEV_BACKEND_URL + primaryUrl;
+          const fallbackRes = await fetch(directUrl, config);
+          if (fallbackRes.ok) {
+            res = fallbackRes;
+          }
+        } catch {}
+      }
+
+      if (res.status === 429) {
+        const json = await res.json().catch(() => null);
+        return {
+          success: false,
+          code: 'AUTH_RATE_LIMITED',
+          error: json?.message || 'Too many attempts from this device. Please try again later.',
+          message: json?.message || 'Too many attempts from this device. Please try again later.',
+          retryAfter: json?.retryAfter || json?.retryAfterSeconds || 120
+        };
+      }
+
+      if (res.status === 401) {
+        return { success: false, error: 'Authentication expired or invalid. Please sign in again.' };
+      }
+
+      if (res.status === 403) {
+        return { success: false, error: 'Unauthorized. You do not have delivery partner permissions.' };
+      }
+
       const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        return {
+          success: false,
+          code: json?.code || 'ERROR',
+          referenceId: json?.referenceId,
+          error: json?.message || json?.error || 'A service error occurred. Please try again.'
+        };
+      }
+
+      const result = json || { success: true };
+
+      if (isGet && ttlMs > 0) {
+        memoryCache.set(cleanKey, {
+          data: result,
+          expiresAt: Date.now() + ttlMs,
+        });
+      }
+
+      return result;
+    } catch (err: any) {
+      console.warn('[fetchApi] Backend notice for ' + endpoint + ':', err?.message);
       return {
         success: false,
-        code: 'AUTH_RATE_LIMITED',
-        error: json?.message || 'Too many attempts from this device. Please try again later.',
-        message: json?.message || 'Too many attempts from this device. Please try again later.',
-        retryAfter: json?.retryAfter || json?.retryAfterSeconds || 120
+        code: 'NETWORK_ERROR',
+        error: 'Unable to connect to the server. Please check your network.'
       };
+    } finally {
+      inFlightRequests.delete(cleanKey);
     }
+  })();
 
-    if (res.status === 401) {
-      return { success: false, error: 'Authentication expired or invalid. Please sign in again.' };
-    }
-
-    if (res.status === 403) {
-      return { success: false, error: 'Unauthorized. You do not have delivery partner permissions.' };
-    }
-
-    const json = await res.json().catch(() => null);
-    if (!res.ok) {
-      return {
-        success: false,
-        code: json?.code || 'ERROR',
-        referenceId: json?.referenceId,
-        error: json?.message || json?.error || 'A service error occurred. Please try again.'
-      };
-    }
-
-    return json || { success: true };
-  } catch (err: any) {
-    console.warn('[fetchApi] Backend notice for ' + endpoint + ':', err?.message);
-    return {
-      success: false,
-      code: 'NETWORK_ERROR',
-      error: 'Unable to connect to the server. Please check your network.'
-    };
+  if (isGet) {
+    inFlightRequests.set(cleanKey, executionPromise);
   }
+
+  return executionPromise;
+}
+
+// ─── DELIVERY RIDER SMART BOOTSTRAP AGGREGATOR HELPER ─────────────────────────
+
+export interface DeliveryLiveBootstrapResponse {
+  success: boolean;
+  activeOrders: any[];
+  riderStatus: any;
+  branchCoordinates: any;
+  todayEarnings: any;
+}
+
+export async function fetchDeliveryLiveBootstrap(
+  forceRefresh = false
+): Promise<ApiResponse<DeliveryLiveBootstrapResponse>> {
+  return fetchApi<DeliveryLiveBootstrapResponse>(
+    '/api/v1/delivery/live/bootstrap',
+    { method: 'GET' },
+    { ttlMs: 15000, forceRefresh }
+  );
 }
