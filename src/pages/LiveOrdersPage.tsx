@@ -18,14 +18,18 @@ import {
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useDeliveryStore } from '../store/deliveryStore';
+import { getRiderOrderStage } from '../components/delivery/PersistentRiderOrderSheet';
 import type { DeliveryOrder, OrderItem } from '../types/delivery';
 import toast from 'react-hot-toast';
 
 export default function LiveOrdersPage() {
   const { 
     activeOrders, 
-    acceptDelivery, 
-    confirmPickup, 
+    acceptDelivery,
+    startPickup,
+    confirmPickup,
+    startDeliveryTrip,
+    markArrivedAtCustomer,
     completeDelivery,
     collectCodCash,
     generateCodUpiQr,
@@ -35,6 +39,7 @@ export default function LiveOrdersPage() {
 
   const [completingOrderId, setCompletingOrderId] = useState<string | null>(null);
   const [proofNote, setProofNote] = useState('');
+  const [completionOtp, setCompletionOtp] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // COD Collection State
@@ -56,12 +61,39 @@ export default function LiveOrdersPage() {
     }
   };
 
+  const handleStartPickup = async (orderId: string) => {
+    const ok = await startPickup(orderId);
+    if (ok) {
+      toast.success('Arrived at store! Collect items from kitchen.');
+    } else {
+      toast.error('Failed to update stage.');
+    }
+  };
+
   const handlePickup = async (orderId: string) => {
     const ok = await confirmPickup(orderId);
     if (ok) {
-      toast.success('Order picked up! Now Out for Delivery to customer.');
+      toast.success('Order picked up! Now ready for delivery trip.');
     } else {
       toast.error('Failed to confirm pickup.');
+    }
+  };
+
+  const handleStartTrip = async (orderId: string) => {
+    const ok = await startDeliveryTrip(orderId);
+    if (ok) {
+      toast.success('Trip started! En route to customer.');
+    } else {
+      toast.error('Failed to start trip.');
+    }
+  };
+
+  const handleMarkArrived = async (orderId: string) => {
+    const ok = await markArrivedAtCustomer(orderId);
+    if (ok) {
+      toast.success('Arrived at customer location!');
+    } else {
+      toast.error('Failed to record arrival.');
     }
   };
 
@@ -153,12 +185,16 @@ export default function LiveOrdersPage() {
     if (!completingOrderId) return;
 
     setIsSubmitting(true);
-    const res = await completeDelivery(completingOrderId, { notes: proofNote || 'Handed directly to customer' });
+    const res = await completeDelivery(completingOrderId, {
+      notes: proofNote || 'Handed directly to customer',
+      otp: completionOtp || undefined,
+    });
 
     if (res.success) {
       toast.success('Delivery completed and verified within proximity!');
       setCompletingOrderId(null);
       setProofNote('');
+      setCompletionOtp('');
     } else {
       toast.error(res.error || 'Failed to complete delivery.');
     }
@@ -334,51 +370,89 @@ export default function LiveOrdersPage() {
               )}
 
               {/* Workflow Stepper Action Buttons */}
-              {isAssigned && (
-                <button
-                  onClick={() => handleAccept(order.id)}
-                  className="w-full py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-black font-black text-sm uppercase tracking-wide shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center gap-2"
-                >
-                  <CheckCircle2 className="w-5 h-5" /> Accept Delivery
-                </button>
-              )}
-
-              {isAccepted && (
-                <button
-                  onClick={() => handlePickup(order.id)}
-                  className="w-full py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black text-sm uppercase tracking-wide shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2"
-                >
-                  <CheckCircle2 className="w-5 h-5" /> Confirm Pickup & Start Trip
-                </button>
-              )}
-
-              {isOutForDelivery && (
-                <button
-                  disabled={isPaymentPending}
-                  onClick={() => {
-                    if (isPaymentPending) {
-                      toast.error('Payment collection required before marking delivered!');
-                      return;
-                    }
-                    setCompletingOrderId(order.id);
-                  }}
-                  className={`w-full py-3.5 rounded-2xl font-black text-sm uppercase tracking-wide shadow-lg transition-all flex items-center justify-center gap-2 ${
-                    isPaymentPending
-                      ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
-                      : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/20'
-                  }`}
-                >
-                  {isPaymentPending ? (
-                    <>
-                      <Lock className="w-4 h-4 text-amber-400" /> Collect Payment to Unlock Delivery
-                    </>
-                  ) : (
-                    <>
-                      <ShieldCheck className="w-5 h-5" /> Mark Delivered (100m Proximity)
-                    </>
-                  )}
-                </button>
-              )}
+              {(() => {
+                const stage = getRiderOrderStage(order);
+                if (stage === 'ASSIGNED') {
+                  return (
+                    <button
+                      onClick={() => handleAccept(order.id)}
+                      className="w-full py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-black font-black text-sm uppercase tracking-wide shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-5 h-5" /> Accept Delivery
+                    </button>
+                  );
+                }
+                if (stage === 'ACCEPTED') {
+                  return (
+                    <button
+                      onClick={() => handleStartPickup(order.id)}
+                      className="w-full py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black text-sm uppercase tracking-wide shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-5 h-5" /> Start Pickup (Head to Restaurant)
+                    </button>
+                  );
+                }
+                if (stage === 'START_PICKUP') {
+                  return (
+                    <button
+                      onClick={() => handlePickup(order.id)}
+                      className="w-full py-3.5 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white font-black text-sm uppercase tracking-wide shadow-lg shadow-purple-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-5 h-5" /> Confirm Food Picked Up
+                    </button>
+                  );
+                }
+                if (stage === 'PICKED_UP') {
+                  return (
+                    <button
+                      onClick={() => handleStartTrip(order.id)}
+                      className="w-full py-3.5 rounded-2xl bg-cyan-600 hover:bg-cyan-500 text-white font-black text-sm uppercase tracking-wide shadow-lg shadow-cyan-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Navigation className="w-5 h-5" /> Start Delivery Trip
+                    </button>
+                  );
+                }
+                if (stage === 'START_DELIVERY') {
+                  return (
+                    <button
+                      onClick={() => handleMarkArrived(order.id)}
+                      className="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm uppercase tracking-wide shadow-lg shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <MapPin className="w-5 h-5" /> Arrived at Customer Location
+                    </button>
+                  );
+                }
+                if (stage === 'ARRIVED') {
+                  return (
+                    <button
+                      disabled={isPaymentPending}
+                      onClick={() => {
+                        if (isPaymentPending) {
+                          toast.error('Payment collection required before marking delivered!');
+                          return;
+                        }
+                        setCompletingOrderId(order.id);
+                      }}
+                      className={`w-full py-3.5 rounded-2xl font-black text-sm uppercase tracking-wide shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                        isPaymentPending
+                          ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                          : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/20'
+                      }`}
+                    >
+                      {isPaymentPending ? (
+                        <>
+                          <Lock className="w-4 h-4 text-amber-400" /> Collect Payment to Unlock Delivery
+                        </>
+                      ) : (
+                        <>
+                          <ShieldCheck className="w-5 h-5" /> Verify & Complete Delivery (100m Proximity)
+                        </>
+                      )}
+                    </button>
+                  );
+                }
+                return null;
+              })()}
             </div>
           );
         })
@@ -564,6 +638,22 @@ export default function LiveOrdersPage() {
             </div>
 
             <form onSubmit={handleCompleteSubmit} className="space-y-3">
+              {/* Optional / Required OTP input */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-300 block flex items-center justify-between">
+                  <span>Customer Delivery PIN (OTP)</span>
+                  <span className="text-[10px] text-slate-500 font-normal">If required by customer</span>
+                </label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  placeholder="e.g. 4-digit PIN"
+                  value={completionOtp}
+                  onChange={(e) => setCompletionOtp(e.target.value.replace(/\D/g, ''))}
+                  className="w-full px-3 py-2.5 rounded-xl bg-[#090E17] border border-slate-700 text-white placeholder-slate-500 font-mono tracking-widest focus:outline-none focus:border-emerald-500 text-center"
+                />
+              </div>
+
               <div className="space-y-1">
                 <label className="font-bold text-slate-300 block">Proof Notes (Optional)</label>
                 <input

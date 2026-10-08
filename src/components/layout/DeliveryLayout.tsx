@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Outlet, Navigate } from 'react-router-dom';
 import { TopHeader } from './TopHeader';
 import { BottomNav } from './BottomNav';
+import { PersistentRiderOrderSheet } from '../delivery/PersistentRiderOrderSheet';
 import { useDeliveryStore } from '../../store/deliveryStore';
 import { Radio, Power, Loader2, AlertTriangle, RefreshCw, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -70,9 +71,15 @@ export const DeliveryLayout: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#090E17] text-slate-100 flex flex-col font-sans relative">
       <TopHeader />
-      <main className="flex-1 pb-20 max-w-lg w-full mx-auto p-3 sm:p-4">
+      <main className={`flex-1 ${activeOrders.length > 0 ? 'pb-36' : 'pb-20'} max-w-lg w-full mx-auto p-3 sm:p-4`}>
         <Outlet />
       </main>
+
+      {/* Persistent Active Order Sheet for assigned deliveries */}
+      {activeOrders.length > 0 && (
+        <PersistentRiderOrderSheet order={activeOrders[0]} />
+      )}
+
       <BottomNav />
 
       {/* ── MANDATORY GPS LOCK MODAL (ONLINE = GPS REQUIRED) ── */}

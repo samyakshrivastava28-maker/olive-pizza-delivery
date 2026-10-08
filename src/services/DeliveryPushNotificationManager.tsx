@@ -263,6 +263,21 @@ export default function DeliveryPushNotificationManager() {
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added' || change.type === 'modified') {
           const order = { id: change.doc.id, ...change.doc.data() } as any;
+
+          // ── SYNTHETIC / TEST ORDER SAFEGUARD ──────────────────────────────────
+          const isSynthetic = 
+            order.id.startsWith('test_') ||
+            order.id.startsWith('mock_') ||
+            order.id.startsWith('synthetic_') ||
+            order.id.startsWith('dummy_') ||
+            order.id.startsWith('online_test_') ||
+            order.id.startsWith('ord_test_') ||
+            (order.customerName && /^(test|mock|synthetic|dummy|fake|archival test|idempotency test)/i.test(order.customerName)) ||
+            (order.orderNumber && /test/i.test(String(order.orderNumber))) ||
+            order.isTest === true;
+
+          if (isSynthetic) return;
+
           // If status is partner_assigned and not yet accepted
           if (order.status === 'partner_assigned' && !order.acceptedAt) {
             const eventId = `delivery_assign:${order.id}:${order.version || 1}`;

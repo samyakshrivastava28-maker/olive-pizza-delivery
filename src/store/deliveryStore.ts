@@ -68,9 +68,13 @@ interface DeliveryState {
   fetchMonthlyReports: () => Promise<void>;
   fetchCurrentMonthHistory: () => Promise<void>;
   acceptDelivery: (orderId: string) => Promise<boolean>;
-  declineDelivery: (orderId: string) => Promise<boolean>;
+  declineDelivery: (orderId: string, reason?: string) => Promise<boolean>;
+  startPickup: (orderId: string) => Promise<boolean>;
   confirmPickup: (orderId: string) => Promise<boolean>;
-  completeDelivery: (orderId: string, proof?: { proofImageUrl?: string; signatureUrl?: string; notes?: string }) => Promise<{ success: boolean; error?: string }>;
+  startDeliveryTrip: (orderId: string) => Promise<boolean>;
+  markArrivedAtCustomer: (orderId: string) => Promise<boolean>;
+  completeDelivery: (orderId: string, proof?: { proofImageUrl?: string; signatureUrl?: string; notes?: string; otp?: string }) => Promise<{ success: boolean; error?: string }>;
+  verifyDeliveryOtp: (orderId: string, otp: string) => Promise<{ success: boolean; error?: string }>;
   collectCodCash: (orderId: string, notes?: string) => Promise<{ success: boolean; error?: string; paymentStatus?: string }>;
   generateCodUpiQr: (orderId: string) => Promise<{ success: boolean; error?: string; attemptId?: string; amountDue?: number; upiString?: string; expiresAt?: string }>;
   checkCodPaymentStatus: (orderId: string) => Promise<{ success: boolean; isPaid: boolean; paymentStatus?: string; error?: string }>;
@@ -434,7 +438,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     set({ isOrdersLoading: true });
 
     try {
-      const activeStatuses = ['partner_assigned', 'accepted', 'ready', 'preparing', 'out_for_delivery'];
+      const activeStatuses = ['partner_assigned', 'accepted', 'ready', 'preparing', 'picked_up', 'out_for_delivery'];
       const q = query(
         collection(db, 'orders'),
         where('deliveryPartnerId', '==', riderUid),
@@ -445,6 +449,22 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         const list: DeliveryOrder[] = [];
         snapshot.forEach((docSnap) => {
           const d = docSnap.data();
+
+          // ── SYNTHETIC / TEST ORDER SAFEGUARD ──────────────────────────────────
+          // Never dispatch tasks or sound alarms for riders on test/mock/synthetic orders
+          const isSynthetic = 
+            docSnap.id.startsWith('test_') ||
+            docSnap.id.startsWith('mock_') ||
+            docSnap.id.startsWith('synthetic_') ||
+            docSnap.id.startsWith('dummy_') ||
+            docSnap.id.startsWith('online_test_') ||
+            docSnap.id.startsWith('ord_test_') ||
+            (d.customerName && /^(test|mock|synthetic|dummy|fake|archival test|idempotency test)/i.test(d.customerName)) ||
+            (d.orderNumber && /test/i.test(String(d.orderNumber))) ||
+            d.isTest === true;
+
+          if (isSynthetic) return;
+
           list.push({
             id: docSnap.id,
             ...d
@@ -547,8 +567,13 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
       });
       if (res.success) {
         SoundAlertEngine.playSound('order_accepted');
+        const nowIso = new Date().toISOString();
         set((state) => ({
-          activeOrders: state.activeOrders.map((o) => o.id === orderId ? { ...o, status: 'partner_assigned' as any } : o)
+          activeOrders: state.activeOrders.map((o) =>
+            o.id === orderId
+              ? { ...o, riderAccepted: true, riderAssignmentStatus: 'accepted', status: 'accepted' as any, acceptedAt: nowIso }
+              : o
+          )
         }));
         return true;
       }
@@ -558,11 +583,12 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     }
   },
 
-  declineDelivery: async (orderId: string) => {
+  declineDelivery: async (orderId: string, reason?: string) => {
     SoundAlertEngine.stopAlarm();
     try {
       const res = await fetchApi('/api/delivery/rider/orders/' + orderId + '/decline', {
-        method: 'POST'
+        method: 'POST',
+        body: JSON.stringify({ reason: reason || 'Declined by delivery partner' })
       });
       if (res.success) {
         set((state) => ({
@@ -574,15 +600,19 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     return false;
   },
 
-  confirmPickup: async (orderId: string) => {
+  startPickup: async (orderId: string) => {
     try {
-      const res = await fetchApi('/api/delivery/rider/orders/' + orderId + '/pickup', {
-        method: 'POST'
+      const res = await fetchApi('/api/delivery/rider/orders/' + orderId + '/action', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'ARRIVED_AT_STORE' })
       });
       if (res.success) {
         SoundAlertEngine.playSound('order_ready');
+        const nowIso = new Date().toISOString();
         set((state) => ({
-          activeOrders: state.activeOrders.map((o) => o.id === orderId ? { ...o, status: 'out_for_delivery' } : o)
+          activeOrders: state.activeOrders.map((o) =>
+            o.id === orderId ? { ...o, riderArrivedAtStoreAt: nowIso } : o
+          )
         }));
         return true;
       }
@@ -592,7 +622,72 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     }
   },
 
-  completeDelivery: async (orderId: string, proof?: { proofImageUrl?: string; signatureUrl?: string; notes?: string }) => {
+  confirmPickup: async (orderId: string) => {
+    try {
+      const res = await fetchApi('/api/delivery/rider/orders/' + orderId + '/pickup', {
+        method: 'POST'
+      });
+      if (res.success) {
+        SoundAlertEngine.playSound('order_ready');
+        const nowIso = new Date().toISOString();
+        set((state) => ({
+          activeOrders: state.activeOrders.map((o) =>
+            o.id === orderId ? { ...o, status: 'picked_up', pickedUpAt: nowIso } : o
+          )
+        }));
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  },
+
+  startDeliveryTrip: async (orderId: string) => {
+    try {
+      const res = await fetchApi('/api/delivery/rider/orders/' + orderId + '/action', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'OUT_FOR_DELIVERY' })
+      });
+      if (res.success) {
+        SoundAlertEngine.playSound('order_ready');
+        const nowIso = new Date().toISOString();
+        set((state) => ({
+          activeOrders: state.activeOrders.map((o) =>
+            o.id === orderId ? { ...o, status: 'out_for_delivery', outForDeliveryAt: nowIso } : o
+          )
+        }));
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  },
+
+  markArrivedAtCustomer: async (orderId: string) => {
+    try {
+      const res = await fetchApi('/api/delivery/rider/orders/' + orderId + '/action', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'ARRIVED_AT_CUSTOMER' })
+      });
+      if (res.success) {
+        SoundAlertEngine.playSound('soft_pop');
+        const nowIso = new Date().toISOString();
+        set((state) => ({
+          activeOrders: state.activeOrders.map((o) =>
+            o.id === orderId ? { ...o, riderArrivedAtCustomerAt: nowIso } : o
+          )
+        }));
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  },
+
+  completeDelivery: async (orderId: string, proof?: { proofImageUrl?: string; signatureUrl?: string; notes?: string; otp?: string }) => {
     const loc = get().currentLocation;
     try {
       const res = await fetchApi('/api/delivery/rider/orders/' + orderId + '/complete', {
@@ -602,7 +697,8 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
           riderLng: loc?.lng,
           proofImageUrl: proof?.proofImageUrl,
           signatureUrl: proof?.signatureUrl,
-          notes: proof?.notes
+          notes: proof?.notes,
+          otp: proof?.otp
         })
       });
 
@@ -620,6 +716,26 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to complete delivery' };
     }
+  },
+
+  verifyDeliveryOtp: async (orderId: string, otp: string) => {
+    const order = get().activeOrders.find((o) => o.id === orderId);
+    if (!order) {
+      return { success: false, error: 'Order not found' };
+    }
+
+    const cleanOtp = (otp || '').trim();
+    if (!cleanOtp || cleanOtp.length < 4) {
+      return { success: false, error: 'Please enter a valid 4-digit OTP' };
+    }
+
+    // If order has an explicit expected delivery OTP on file, check it
+    const expectedOtp = String((order as any).deliveryOtp || (order as any).otp || '').trim();
+    if (expectedOtp && expectedOtp !== cleanOtp) {
+      return { success: false, error: 'Incorrect delivery OTP. Please verify with the customer.' };
+    }
+
+    return { success: true };
   },
 
   collectCodCash: async (orderId: string, notes?: string) => {

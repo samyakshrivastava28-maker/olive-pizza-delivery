@@ -77,7 +77,25 @@ export interface DeliveryOrder {
     notes?: string;
     completedAt?: string;
   };
+  riderAccepted?: boolean;
+  riderAssignmentStatus?: 'assigned' | 'accepted' | 'declined' | string;
+  riderArrivedAtStoreAt?: string;
+  outForDeliveryAt?: string;
+  riderArrivedAtCustomerAt?: string;
+  deliveryOtp?: string;
+  deliveryInstructions?: string;
+  notes?: string;
 }
+
+export type RiderLifecycleStage =
+  | 'ASSIGNED'
+  | 'ACCEPTED'
+  | 'START_PICKUP'
+  | 'PICKED_UP'
+  | 'START_DELIVERY'
+  | 'ARRIVED'
+  | 'DELIVERED';
+
 
 export interface RiderShiftStats {
   assigned: number;
