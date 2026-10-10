@@ -72,11 +72,8 @@ export function getRiderOrderStage(order: DeliveryOrder): RiderLifecycleStage {
     return 'START_PICKUP';
   }
   if (
-    st === 'accepted' ||
     order.riderAccepted ||
-    order.riderAssignmentStatus === 'accepted' ||
-    st === 'preparing' ||
-    st === 'ready'
+    order.riderAssignmentStatus === 'accepted'
   ) {
     return 'ACCEPTED';
   }

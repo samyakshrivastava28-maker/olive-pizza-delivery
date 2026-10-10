@@ -80,6 +80,7 @@ interface DeliveryState {
   checkCodPaymentStatus: (orderId: string) => Promise<{ success: boolean; isPaid: boolean; paymentStatus?: string; error?: string }>;
   updateGpsLocation: (lat: number, lng: number, heading?: number, speed?: number, accuracy?: number) => Promise<void>;
   updateRiderPhone: (phone: string) => void;
+  fetchActiveOrders: () => Promise<void>;
   addOrUpdateActiveOrder: (order: Partial<DeliveryOrder> & { id: string }) => void;
 }
 
@@ -367,6 +368,8 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
             method: 'POST',
             body: JSON.stringify({
               isOnline: true,
+              lat: currentLoc.latitude,
+              lng: currentLoc.longitude,
               latitude: currentLoc.latitude,
               longitude: currentLoc.longitude,
               accuracy: currentLoc.accuracy
@@ -411,6 +414,8 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
             method: 'POST',
             body: JSON.stringify({
               isOnline: true,
+              lat: currentLoc.latitude,
+              lng: currentLoc.longitude,
               latitude: currentLoc.latitude,
               longitude: currentLoc.longitude,
               accuracy: currentLoc.accuracy
@@ -493,10 +498,10 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         set({ activeOrders: list, isOrdersLoading: false });
       }, (error) => {
         console.warn('Active orders subscription notice:', error);
-        set({ isOrdersLoading: false });
+        get().fetchActiveOrders();
       });
     } catch (e) {
-      set({ isOrdersLoading: false });
+      get().fetchActiveOrders();
     }
 
     return () => {
@@ -506,6 +511,19 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         activeOrdersUnsub = null;
       }
     };
+  },
+
+  fetchActiveOrders: async () => {
+    try {
+      const res = await fetchApi('/api/delivery/rider/active-orders');
+      if (res && res.success && Array.isArray(res.orders)) {
+        set({ activeOrders: res.orders, isOrdersLoading: false });
+      } else {
+        set({ isOrdersLoading: false });
+      }
+    } catch {
+      set({ isOrdersLoading: false });
+    }
   },
 
   addOrUpdateActiveOrder: (order) => {

@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, signInWithCustomToken } from 'firebase/auth';
+export { signInWithCustomToken };
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 

@@ -24,6 +24,13 @@ export default function LoginPage() {
   const [unverifiedEmailUser, setUnverifiedEmailUser] = useState<any>(null);
   const [resendingEmail, setResendingEmail] = useState(false);
   const navigate = useNavigate();
+  const { isAuthorized } = useDeliveryStore();
+
+  React.useEffect(() => {
+    if (isAuthorized) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isAuthorized, navigate]);
 
   const formatAuthError = (err: any) => {
     const code = err?.code || '';
