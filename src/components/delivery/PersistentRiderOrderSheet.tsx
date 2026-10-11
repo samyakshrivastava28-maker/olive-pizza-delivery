@@ -369,53 +369,53 @@ export const PersistentRiderOrderSheet: React.FC<PersistentRiderOrderSheetProps>
     try {
       switch (currentStage) {
         case 'ASSIGNED': {
-          const ok = await acceptDelivery(order.id);
-          if (ok) {
+          const res = await acceptDelivery(order.id);
+          if (res.success) {
             toast.success('Assignment accepted! Proceed to restaurant.');
             setSnap('half');
           } else {
-            toast.error('Failed to accept order.');
+            toast.error(res.error || 'Failed to accept order.');
           }
           break;
         }
 
         case 'ACCEPTED': {
-          const ok = await startPickup(order.id);
-          if (ok) {
+          const res = await startPickup(order.id);
+          if (res.success) {
             toast.success('Arrived at restaurant! Pick up items from kitchen.');
           } else {
-            toast.error('Failed to update stage.');
+            toast.error(res.error || 'Failed to update stage.');
           }
           break;
         }
 
         case 'START_PICKUP': {
-          const ok = await confirmPickup(order.id);
-          if (ok) {
+          const res = await confirmPickup(order.id);
+          if (res.success) {
             toast.success('Order items collected! Ready for trip.');
           } else {
-            toast.error('Failed to confirm pickup.');
+            toast.error(res.error || 'Failed to confirm pickup.');
           }
           break;
         }
 
         case 'PICKED_UP': {
-          const ok = await startDeliveryTrip(order.id);
-          if (ok) {
+          const res = await startDeliveryTrip(order.id);
+          if (res.success) {
             toast.success('Trip started! Drive safe to customer destination.');
           } else {
-            toast.error('Failed to start delivery trip.');
+            toast.error(res.error || 'Failed to start delivery trip.');
           }
           break;
         }
 
         case 'START_DELIVERY': {
-          const ok = await markArrivedAtCustomer(order.id);
-          if (ok) {
+          const res = await markArrivedAtCustomer(order.id);
+          if (res.success) {
             toast.success('Arrived at customer location!');
             setSnap('full'); // Open full view for payment & OTP
           } else {
-            toast.error('Failed to mark arrival.');
+            toast.error(res.error || 'Failed to mark arrival.');
           }
           break;
         }

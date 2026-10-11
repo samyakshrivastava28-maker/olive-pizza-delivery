@@ -67,12 +67,12 @@ interface DeliveryState {
   fetchTodayStats: () => Promise<void>;
   fetchMonthlyReports: () => Promise<void>;
   fetchCurrentMonthHistory: () => Promise<void>;
-  acceptDelivery: (orderId: string) => Promise<boolean>;
-  declineDelivery: (orderId: string, reason?: string) => Promise<boolean>;
-  startPickup: (orderId: string) => Promise<boolean>;
-  confirmPickup: (orderId: string) => Promise<boolean>;
-  startDeliveryTrip: (orderId: string) => Promise<boolean>;
-  markArrivedAtCustomer: (orderId: string) => Promise<boolean>;
+  acceptDelivery: (orderId: string) => Promise<{ success: boolean; error?: string }>;
+  declineDelivery: (orderId: string, reason?: string) => Promise<{ success: boolean; error?: string }>;
+  startPickup: (orderId: string) => Promise<{ success: boolean; error?: string }>;
+  confirmPickup: (orderId: string) => Promise<{ success: boolean; error?: string }>;
+  startDeliveryTrip: (orderId: string) => Promise<{ success: boolean; error?: string }>;
+  markArrivedAtCustomer: (orderId: string) => Promise<{ success: boolean; error?: string }>;
   completeDelivery: (orderId: string, proof?: { proofImageUrl?: string; signatureUrl?: string; notes?: string; otp?: string }) => Promise<{ success: boolean; error?: string }>;
   verifyDeliveryOtp: (orderId: string, otp: string) => Promise<{ success: boolean; error?: string }>;
   collectCodCash: (orderId: string, notes?: string) => Promise<{ success: boolean; error?: string; paymentStatus?: string }>;
@@ -612,11 +612,11 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
               : o
           )
         }));
-        return true;
+        return { success: true };
       }
-      return false;
-    } catch {
-      return false;
+      return { success: false, error: res.error || res.message || 'Failed to accept order' };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Network error accepting order' };
     }
   },
 
@@ -631,10 +631,12 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         set((state) => ({
           activeOrders: state.activeOrders.filter((o) => o.id !== orderId)
         }));
-        return true;
+        return { success: true };
       }
-    } catch {}
-    return false;
+      return { success: false, error: res.error || res.message || 'Failed to decline order' };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Network error declining order' };
+    }
   },
 
   startPickup: async (orderId: string) => {
@@ -651,11 +653,11 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
             o.id === orderId ? { ...o, riderArrivedAtStoreAt: nowIso } : o
           )
         }));
-        return true;
+        return { success: true };
       }
-      return false;
-    } catch {
-      return false;
+      return { success: false, error: res.error || res.message || 'Failed to update store arrival' };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Network error updating store arrival' };
     }
   },
 
@@ -672,11 +674,11 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
             o.id === orderId ? { ...o, status: 'picked_up', pickedUpAt: nowIso } : o
           )
         }));
-        return true;
+        return { success: true };
       }
-      return false;
-    } catch {
-      return false;
+      return { success: false, error: res.error || res.message || 'Failed to confirm pickup' };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Network error confirming pickup' };
     }
   },
 
@@ -694,11 +696,11 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
             o.id === orderId ? { ...o, status: 'out_for_delivery', outForDeliveryAt: nowIso } : o
           )
         }));
-        return true;
+        return { success: true };
       }
-      return false;
-    } catch {
-      return false;
+      return { success: false, error: res.error || res.message || 'Failed to start trip' };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Network error starting trip' };
     }
   },
 
@@ -716,11 +718,11 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
             o.id === orderId ? { ...o, riderArrivedAtCustomerAt: nowIso } : o
           )
         }));
-        return true;
+        return { success: true };
       }
-      return false;
-    } catch {
-      return false;
+      return { success: false, error: res.error || res.message || 'Failed to record customer arrival' };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Network error recording customer arrival' };
     }
   },
 

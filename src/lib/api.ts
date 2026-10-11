@@ -175,11 +175,13 @@ export async function fetchApi<T = any>(
       }
 
       if (res.status === 401) {
-        return { success: false, error: 'Authentication expired or invalid. Please sign in again.' };
+        const json = await res.json().catch(() => null);
+        return { success: false, code: json?.code || 'UNAUTHORIZED', error: json?.message || json?.error || 'Authentication expired or invalid. Please sign in again.' };
       }
 
       if (res.status === 403) {
-        return { success: false, error: 'Unauthorized. You do not have delivery partner permissions.' };
+        const json = await res.json().catch(() => null);
+        return { success: false, code: json?.code || 'FORBIDDEN', error: json?.message || json?.error || 'Unauthorized. You do not have delivery partner permissions.' };
       }
 
       const json = await res.json().catch(() => null);

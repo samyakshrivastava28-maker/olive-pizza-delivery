@@ -53,47 +53,47 @@ export default function LiveOrdersPage() {
   const [paymentVerifiedSuccess, setPaymentVerifiedSuccess] = useState(false);
 
   const handleAccept = async (orderId: string) => {
-    const ok = await acceptDelivery(orderId);
-    if (ok) {
+    const res = await acceptDelivery(orderId);
+    if (res.success) {
       toast.success('Order accepted! Proceed to restaurant for pickup.');
     } else {
-      toast.error('Failed to accept order.');
+      toast.error(res.error || 'Failed to accept order.');
     }
   };
 
   const handleStartPickup = async (orderId: string) => {
-    const ok = await startPickup(orderId);
-    if (ok) {
+    const res = await startPickup(orderId);
+    if (res.success) {
       toast.success('Arrived at store! Collect items from kitchen.');
     } else {
-      toast.error('Failed to update stage.');
+      toast.error(res.error || 'Failed to update stage.');
     }
   };
 
   const handlePickup = async (orderId: string) => {
-    const ok = await confirmPickup(orderId);
-    if (ok) {
+    const res = await confirmPickup(orderId);
+    if (res.success) {
       toast.success('Order picked up! Now ready for delivery trip.');
     } else {
-      toast.error('Failed to confirm pickup.');
+      toast.error(res.error || 'Failed to confirm pickup.');
     }
   };
 
   const handleStartTrip = async (orderId: string) => {
-    const ok = await startDeliveryTrip(orderId);
-    if (ok) {
+    const res = await startDeliveryTrip(orderId);
+    if (res.success) {
       toast.success('Trip started! En route to customer.');
     } else {
-      toast.error('Failed to start trip.');
+      toast.error(res.error || 'Failed to start trip.');
     }
   };
 
   const handleMarkArrived = async (orderId: string) => {
-    const ok = await markArrivedAtCustomer(orderId);
-    if (ok) {
+    const res = await markArrivedAtCustomer(orderId);
+    if (res.success) {
       toast.success('Arrived at customer location!');
     } else {
-      toast.error('Failed to record arrival.');
+      toast.error(res.error || 'Failed to record arrival.');
     }
   };
 
