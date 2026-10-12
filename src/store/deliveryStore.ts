@@ -608,7 +608,14 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         set((state) => ({
           activeOrders: state.activeOrders.map((o) =>
             o.id === orderId
-              ? { ...o, riderAccepted: true, riderAssignmentStatus: 'accepted', status: 'accepted' as any, acceptedAt: nowIso }
+              ? {
+                  ...o,
+                  riderAccepted: true,
+                  riderAssignmentStatus: 'accepted',
+                  riderAcceptedAt: nowIso,
+                  // Rider acceptance is an assignment acknowledgement, not an
+                  // order-state transition. Keep the server's canonical status.
+                }
               : o
           )
         }));
