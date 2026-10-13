@@ -196,13 +196,11 @@ jobs:
           gh release view latest --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1 || \
             gh release create latest --repo "${GITHUB_REPOSITORY}" --title "Olive Pizza Delivery — Latest Release" --notes "Latest official builds for Olive Pizza Delivery."
 
-          # Delete old assets
+          # Delete ANY old iOS assets from 'latest' release so only the latest commit file exists
           OLD_IOS=$(gh release view latest --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[] | select(.name | test("(\\.(ipa|zip)$)|xcarchive")) | .name')
           for old in $OLD_IOS; do
-            if [ "$old" != "olivepizza-delivery.ipa" ] && [ "$old" != "${IPA_NAME}" ] && [ "$old" != "${IPA_UNSIGNED}" ]; then
-              echo "Deleting old release asset: ${old}"
-              gh release delete-asset latest "${old}" --repo "${GITHUB_REPOSITORY}" --yes || true
-            fi
+            echo "Deleting old release asset: ${old}"
+            gh release delete-asset latest "${old}" --repo "${GITHUB_REPOSITORY}" --yes || true
           done
 
           # Purge any unrequested desktop assets (.exe, .dmg) to enforce mobile-only matrix
@@ -214,9 +212,7 @@ jobs:
 
           if [ "$SIGNED_BUILD" = "true" ] && [ -f "release-ios/${IPA_NAME}" ]; then
             echo "Publishing signed production ${IPA_NAME} to official release tag 'latest'..."
-            cp -f "release-ios/${IPA_NAME}" "release-ios/olivepizza-delivery.ipa"
             gh release upload latest "release-ios/${IPA_NAME}" --repo "${GITHUB_REPOSITORY}" --clobber
-            gh release upload latest "release-ios/olivepizza-delivery.ipa" --repo "${GITHUB_REPOSITORY}" --clobber
           else
             echo "ℹ️ Signing certificate was not provided. Never publishing unsigned build as official production release asset."
             if [ -n "$IPA_UNSIGNED" ] && [ -f "release-ios/${IPA_UNSIGNED}" ]; then
