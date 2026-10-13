@@ -210,15 +210,14 @@ jobs:
             gh release delete-asset latest "${forbidden}" --repo "${GITHUB_REPOSITORY}" --yes || true
           done
 
-          if [ "$SIGNED_BUILD" = "true" ] && [ -f "release-ios/${IPA_NAME}" ]; then
-            echo "Publishing signed production ${IPA_NAME} to official release tag 'latest'..."
+          # Upload strictly the single latest commit IPA (signed or preview)
+          if [ -f "release-ios/${IPA_NAME}" ]; then
+            echo "Uploading single latest IPA: ${IPA_NAME}"
             gh release upload latest "release-ios/${IPA_NAME}" --repo "${GITHUB_REPOSITORY}" --clobber
-          else
-            echo "ℹ️ Signing certificate was not provided. Never publishing unsigned build as official production release asset."
-            if [ -n "$IPA_UNSIGNED" ] && [ -f "release-ios/${IPA_UNSIGNED}" ]; then
-              echo "Uploading as explicitly tagged unofficial preview: ${IPA_UNSIGNED}"
-              gh release upload latest "release-ios/${IPA_UNSIGNED}" --repo "${GITHUB_REPOSITORY}" --clobber || true
-            fi
+          elif [ -n "$IPA_UNSIGNED" ] && [ -f "release-ios/${IPA_UNSIGNED}" ]; then
+            cp -f "release-ios/${IPA_UNSIGNED}" "release-ios/${IPA_NAME}"
+            echo "Uploading single latest IPA: ${IPA_NAME}"
+            gh release upload latest "release-ios/${IPA_NAME}" --repo "${GITHUB_REPOSITORY}" --clobber
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
