@@ -11,7 +11,7 @@ import {
 } from 'firebase/firestore';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { fetchApi, getApiUrl } from '../lib/api';
+import { fetchApi, getApiUrl, invalidateRiderOrdersCache } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { offlineGpsBuffer } from '../lib/offlineGpsBuffer';
 import { SoundAlertEngine } from '../lib/SoundAlertEngine';
@@ -603,6 +603,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         method: 'POST'
       });
       if (res.success) {
+        invalidateRiderOrdersCache();
         SoundAlertEngine.playSound('order_accepted');
         const nowIso = new Date().toISOString();
         set((state) => ({
@@ -628,6 +629,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
         body: JSON.stringify({ reason: reason || 'Declined by delivery partner' })
       });
       if (res.success) {
+        invalidateRiderOrdersCache();
         set((state) => ({
           activeOrders: state.activeOrders.filter((o) => o.id !== orderId)
         }));
@@ -742,6 +744,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
       });
 
       if (res.success) {
+        invalidateRiderOrdersCache();
         SoundAlertEngine.playSound('order_delivered');
         set((state) => ({
           activeOrders: state.activeOrders.filter((o) => o.id !== orderId)

@@ -82,21 +82,104 @@ function getOrGenerateDeviceId(): string {
 export interface CacheOptions {
   ttlMs?: number;
   forceRefresh?: boolean;
+  persist?: boolean;
+  swr?: boolean;
+  onFreshData?: (data: any) => void;
+}
+
+// Canonical TTLs in milliseconds matching Backend Redis Layerbase cache
+export const CLIENT_CACHE_TTL = {
+  RESTAURANT_STATUS: 60 * 1000,    // 60s (1 min)
+  LIVE_BOOTSTRAP: 15 * 1000,       // 15s
+  RIDER_TODAY: 60 * 1000,          // 60s (1 min)
+  RIDER_HISTORY: 120 * 1000,       // 120s (2 min)
+  APP_CONFIG: 600 * 1000,          // 600s (10 min)
+};
+
+const STORAGE_PREFIX = 'op_deliv_cache_';
+
+interface CacheEntry<T> {
+  data: T;
+  expiresAt: number;
+  timestamp: number;
 }
 
 const inFlightRequests = new Map<string, Promise<any>>();
-const memoryCache = new Map<string, { data: any; expiresAt: number }>();
+const memoryCache = new Map<string, CacheEntry<any>>();
+
+function getCachedEntry<T>(key: string): CacheEntry<T> | null {
+  const mem = memoryCache.get(key);
+  if (mem) return mem;
+
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
+      if (raw) {
+        const parsed: CacheEntry<T> = JSON.parse(raw);
+        memoryCache.set(key, parsed);
+        return parsed;
+      }
+    } catch {}
+  }
+  return null;
+}
+
+function setCachedEntry<T>(key: string, data: T, ttlMs: number, persist: boolean = true): void {
+  const now = Date.now();
+  const entry: CacheEntry<T> = {
+    data,
+    timestamp: now,
+    expiresAt: now + ttlMs,
+  };
+  memoryCache.set(key, entry);
+
+  if (persist && typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(`${STORAGE_PREFIX}${key}`, JSON.stringify(entry));
+    } catch {}
+  }
+}
 
 export function invalidateDeliveryCache(pattern?: string | RegExp): void {
   if (!pattern) {
     memoryCache.clear();
+    if (typeof window !== 'undefined') {
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith(STORAGE_PREFIX)) keysToRemove.push(k);
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+      } catch {}
+    }
     return;
   }
+
+  const regex = typeof pattern === 'string' ? new RegExp(pattern) : pattern;
   for (const key of memoryCache.keys()) {
-    if (typeof pattern === 'string' ? key.includes(pattern) : pattern.test(key)) {
+    if (regex.test(key)) {
       memoryCache.delete(key);
     }
   }
+
+  if (typeof window !== 'undefined') {
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(STORAGE_PREFIX)) {
+          const bare = k.replace(STORAGE_PREFIX, '');
+          if (regex.test(bare)) keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+    } catch {}
+  }
+}
+
+export function invalidateRiderOrdersCache(): void {
+  invalidateDeliveryCache(/(orders|bootstrap|active-orders|today)/);
 }
 
 export async function fetchApi<T = any>(
@@ -109,15 +192,23 @@ export async function fetchApi<T = any>(
   const cleanKey = `GET:${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
   const ttlMs = cacheOptions?.ttlMs ?? 0;
   const forceRefresh = cacheOptions?.forceRefresh ?? false;
+  const persist = cacheOptions?.persist ?? true;
+  const enableSwr = cacheOptions?.swr ?? true;
 
-  if (isGet && !forceRefresh && ttlMs > 0) {
-    const cached = memoryCache.get(cleanKey);
-    if (cached && Date.now() < cached.expiresAt) {
-      return cached.data;
-    }
+  // 1. Check multi-tier cache
+  const cachedEntry = isGet && ttlMs > 0 ? getCachedEntry<ApiResponse<T>>(cleanKey) : null;
+  const isFresh = cachedEntry ? Date.now() < cachedEntry.expiresAt : false;
+
+  // 1a. Fresh cache hit -> immediate return (0ms)
+  if (isGet && !forceRefresh && cachedEntry && isFresh) {
+    return cachedEntry.data;
   }
 
+  // 2. Request deduplication for simultaneous calls
   if (isGet && !forceRefresh && inFlightRequests.has(cleanKey)) {
+    if (cachedEntry && enableSwr) {
+      return cachedEntry.data;
+    }
     return inFlightRequests.get(cleanKey);
   }
 
@@ -197,10 +288,14 @@ export async function fetchApi<T = any>(
       const result = json || { success: true };
 
       if (isGet && ttlMs > 0) {
-        memoryCache.set(cleanKey, {
-          data: result,
-          expiresAt: Date.now() + ttlMs,
-        });
+        setCachedEntry(cleanKey, result, ttlMs, persist);
+        if (cacheOptions?.onFreshData) {
+          try {
+            cacheOptions.onFreshData(result);
+          } catch (e) {
+            console.warn(`[fetchApi] onFreshData handler error for ${cleanKey}:`, e);
+          }
+        }
       }
 
       return result;
@@ -220,6 +315,11 @@ export async function fetchApi<T = any>(
     inFlightRequests.set(cleanKey, executionPromise);
   }
 
+  // 3. Stale-While-Revalidate: Return stale cached data immediately (0ms) while background fetch updates
+  if (isGet && !forceRefresh && cachedEntry && enableSwr) {
+    return cachedEntry.data;
+  }
+
   return executionPromise;
 }
 
@@ -234,11 +334,29 @@ export interface DeliveryLiveBootstrapResponse {
 }
 
 export async function fetchDeliveryLiveBootstrap(
-  forceRefresh = false
+  forceRefresh = false,
+  onFreshData?: (data: ApiResponse<DeliveryLiveBootstrapResponse>) => void
 ): Promise<ApiResponse<DeliveryLiveBootstrapResponse>> {
   return fetchApi<DeliveryLiveBootstrapResponse>(
     '/api/v1/delivery/live/bootstrap',
     { method: 'GET' },
-    { ttlMs: 15000, forceRefresh }
+    {
+      ttlMs: CLIENT_CACHE_TTL.LIVE_BOOTSTRAP, // 15s
+      forceRefresh,
+      swr: true,
+      onFreshData,
+    }
+  );
+}
+
+export async function fetchAppConfig(appName: string, forceRefresh = false): Promise<ApiResponse<any>> {
+  return fetchApi(
+    `/api/config/${encodeURIComponent(appName)}`,
+    { method: 'GET' },
+    {
+      ttlMs: CLIENT_CACHE_TTL.APP_CONFIG, // 600s (10 min) matching Redis Layerbase
+      forceRefresh,
+      swr: true,
+    }
   );
 }
