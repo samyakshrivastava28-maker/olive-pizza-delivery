@@ -21,9 +21,9 @@ android {
             def targetKeystore = file("release.keystore").exists() ? file("release.keystore") : file("ci-release.keystore")
             if (targetKeystore.exists()) {
                 storeFile targetKeystore
-                storePassword (System.getenv("KEYSTORE_PASSWORD") ?: "olivepizza123")
+                storePassword (System.getenv("KEYSTORE_PASSWORD") ?: "olivepizza")
                 keyAlias (System.getenv("KEY_ALIAS") ?: "olivepizza")
-                keyPassword (System.getenv("KEY_PASSWORD") ?: (System.getenv("KEYSTORE_PASSWORD") ?: "olivepizza123"))
+                keyPassword (System.getenv("KEY_PASSWORD") ?: (System.getenv("KEYSTORE_PASSWORD") ?: "olivepizza"))
                 v1SigningEnabled true
                 v2SigningEnabled true
             }

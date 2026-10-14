@@ -117,9 +117,9 @@ jobs:
               cp -f "android/app/ci-release.keystore" "$KEYSTORE_PATH"
             fi
             echo "RELEASE_SIGNING=ci-deterministic" >> $GITHUB_ENV
-            echo "KEYSTORE_PASS=olivepizza123" >> $GITHUB_ENV
+            echo "KEYSTORE_PASS=olivepizza" >> $GITHUB_ENV
             echo "KEY_ALIAS_NAME=olivepizza" >> $GITHUB_ENV
-            echo "KEY_PASS=olivepizza123" >> $GITHUB_ENV
+            echo "KEY_PASS=olivepizza" >> $GITHUB_ENV
             echo "✅ Deterministic CI release keystore configured (prevents signature update conflicts on Android)."
           fi
 
