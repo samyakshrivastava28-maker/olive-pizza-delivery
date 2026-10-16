@@ -25,6 +25,7 @@ import type {
 } from '../types/delivery';
 
 import { locationService, type DeviceLocationState } from '../services/LocationService';
+import { startRiderBackgroundTracking, stopRiderBackgroundTracking } from '../lib/BackgroundRiderTracking';
 
 interface DeliveryState {
   user: User | null;
@@ -216,7 +217,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
             branchName: u.branchName || 'Olive Pizza',
             branchAddress: u.branchAddress || '',
             branchPhone: u.branchPhone || '',
-            isOnline: false,
+            isOnline: u.isOnline === true || String(u.onlineStatus || '').toLowerCase() === 'online',
             workingSchedule: u.workingSchedule || [],
             joiningDate: u.joiningDate || u.createdAt || new Date().toISOString(),
             emergencyContact: u.emergencyContact || { name: 'Operations Support', phone: u.branchPhone || '' },
@@ -228,7 +229,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
             user: firebaseUser,
             riderProfile: profile,
             userRole: profile.role,
-            isOnline: false,
+            isOnline: profile.isOnline,
             isAuthChecking: false,
             isAuthorized: true,
             authStatus: 'APPROVED',
@@ -295,6 +296,9 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
 
   logout: async () => {
     SoundAlertEngine.stopAlarm();
+    // Explicit sign-out revokes the operational presence; merely closing/backgrounding the app does not.
+    await get().toggleOnlineStatus(false).catch(() => false);
+    await stopRiderBackgroundTracking().catch(() => {});
     if (activeOrdersUnsub) {
       activeOrdersUnsub();
       activeOrdersUnsub = null;
@@ -316,6 +320,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     // Case 1: Switching to OFFLINE — Always allowed immediately
     if (!next) {
       SoundAlertEngine.stopAlarm();
+      await stopRiderBackgroundTracking().catch((error) => console.warn('[DeliveryStore] Native tracking stop notice:', error));
       locationService.stopTracking();
       set({ isOnline: false, isGpsLocked: false, isGpsActive: false, gpsStatus: 'OFFLINE' });
       const uid = get().user?.uid;
@@ -376,6 +381,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
             })
           });
           if (res?.success !== false) {
+            await startRiderBackgroundTracking(uid).catch((error) => console.warn('[DeliveryStore] Native background tracking start notice:', error));
             set({ isOnline: true, isGpsLocked: false, gpsStatus: 'ACTIVE', isGpsActive: true });
             return true;
           }
@@ -410,7 +416,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
       const currentLoc = locationService.getLastCoordinates();
       if (currentLoc) {
         try {
-          await fetchApi('/api/delivery/rider/status', {
+          const statusResult = await fetchApi('/api/delivery/rider/status', {
             method: 'POST',
             body: JSON.stringify({
               isOnline: true,
@@ -421,8 +427,12 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
               accuracy: currentLoc.accuracy
             })
           });
+          if (statusResult?.success === false) {
+            console.warn('[DeliveryStore] Background-resume online sync was rejected:', statusResult.error);
+          }
         } catch {}
       }
+      await startRiderBackgroundTracking(get().user?.uid).catch((error) => console.warn('[DeliveryStore] Native background tracking resume notice:', error));
       return true;
     } else {
       const state = locationService.getState();
