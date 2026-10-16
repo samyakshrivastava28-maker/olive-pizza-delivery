@@ -166,6 +166,15 @@ public class RiderBackgroundTrackingService extends Service implements LocationL
             int status = connection.getResponseCode();
             if (status < 200 || status >= 300) {
                 Log.w(TAG, "Location upload returned HTTP " + status);
+                if (status == 401 || status == 403 || status == 409) {
+                    // Auth revoked or scheduled shift ended. Stop collection instead of retrying
+                    // private location uploads while the account is no longer authorized/online.
+                    new android.os.Handler(Looper.getMainLooper()).post(() -> {
+                        removeUpdates();
+                        stopForeground(true);
+                        stopSelf();
+                    });
+                }
             }
         } catch (Exception e) {
             Log.w(TAG, "Background location upload failed; next GPS update will retry.", e);
