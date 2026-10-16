@@ -12,11 +12,11 @@ const nativeTracking = registerPlugin<RiderTrackingPlugin>('RiderBackgroundTrack
  * and remains governed by iOS background/force-quit behavior.
  */
 export async function startRiderBackgroundTracking(uid?: string | null): Promise<void> {
-  if (Capacitor.getPlatform() !== 'android' || !uid) return;
+  if (!['android', 'ios'].includes(Capacitor.getPlatform()) || !uid) return;
   await nativeTracking.start({ uid });
 }
 
 export async function stopRiderBackgroundTracking(): Promise<void> {
-  if (Capacitor.getPlatform() !== 'android') return;
+  if (!['android', 'ios'].includes(Capacitor.getPlatform())) return;
   await nativeTracking.stop();
 }
