@@ -16,6 +16,36 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         return true
     }
 
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        let type = (userInfo["type"] as? String ?? "").uppercased()
+        let targetUid = userInfo["riderUid"] as? String
+
+        if type == "WORK_SHIFT_STARTED", let targetUid = targetUid {
+            // Best effort only: iOS may deliver background pushes late or not at all,
+            // and never relaunches the app after a user force-quits it.
+            UserDefaults.standard.set(targetUid, forKey: "olive_rider_pending_shift_start_uid")
+            NotificationCenter.default.post(
+                name: Notification.Name("OliveRiderBackgroundTrackingStart"),
+                object: userInfo
+            )
+            completionHandler(.newData)
+            return
+        }
+
+        if type == "WORK_SHIFT_ENDED" {
+            UserDefaults.standard.removeObject(forKey: "olive_rider_pending_shift_start_uid")
+            NotificationCenter.default.post(name: Notification.Name("OliveRiderBackgroundTrackingStop"), object: nil)
+            completionHandler(.newData)
+            return
+        }
+
+        completionHandler(.noData)
+    }
+
     private func registerNotificationCategories() {
         let viewOrderAction = UNNotificationAction(
             identifier: "VIEW_ORDER",
