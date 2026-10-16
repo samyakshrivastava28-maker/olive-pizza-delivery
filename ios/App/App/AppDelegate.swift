@@ -215,15 +215,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             }
             return
         }
-        if actionIdentifier == "DONE_SHIFT" {
-            NotificationCenter.default.post(
-                name: Notification.Name("CapacitorNotificationAction"),
-                object: ["action": actionIdentifier, "data": userInfo]
-            )
-            completionHandler()
-            return
-        }
-
         if backgroundActions.contains(actionIdentifier), let orderId = orderId, !orderId.isEmpty {
             executeBackgroundDeliveryAction(action: actionIdentifier, orderId: orderId, userInfo: userInfo) {
                 NotificationCenter.default.post(
@@ -293,41 +284,57 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         userInfo: [AnyHashable: Any],
         completion: @escaping () -> Void
     ) {
-        guard let url = URL(string: "\(backendBaseUrl)/api/delivery/rider/orders/\(orderId)/action") else {
+        guard
+            let recipientUid = userInfo["recipientUid"] as? String,
+            let user = Auth.auth().currentUser,
+            user.uid == recipientUid,
+            let encodedOrderId = orderId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+            let url = URL(string: "\(backendBaseUrl)/api/delivery/rider/orders/\(encodedOrderId)/action")
+        else {
+            NSLog("[DeliveryApp] Ignoring order action without matching authenticated rider recipient.")
             completion()
             return
         }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("DELIVERY", forHTTPHeaderField: "X-App-Target")
-        request.setValue("DELIVERY", forHTTPHeaderField: "X-App-Source")
-        request.setValue("notif_ios_\(UUID().uuidString)", forHTTPHeaderField: "Idempotency-Key")
-
-        let payload: [String: Any] = [
-            "action": action,
-            "requestId": "ios_act_\(UUID().uuidString)",
-            "source": "PUSH_NOTIFICATION"
-        ]
-
-        do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
-        } catch {
-            completion()
-            return
-        }
-
-        let task = URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                NSLog("[DeliveryApp] iOS background action network error: %@", error.localizedDescription)
-            } else if let httpResponse = response as? HTTPURLResponse {
-                NSLog("[DeliveryApp] iOS background action response status: %d", httpResponse.statusCode)
+        user.getIDTokenForcingRefresh(false) { token, tokenError in
+            guard let token = token, tokenError == nil else {
+                NSLog("[DeliveryApp] Could not obtain an ID token for the order action.")
+                completion()
+                return
             }
-            completion()
+
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("DELIVERY", forHTTPHeaderField: "X-App-Target")
+            request.setValue("DELIVERY", forHTTPHeaderField: "X-App-Source")
+            request.setValue("notif_ios_\(UUID().uuidString)", forHTTPHeaderField: "Idempotency-Key")
+
+            let payload: [String: Any] = [
+                "action": action,
+                "requestId": "ios_act_\(UUID().uuidString)",
+                "source": "PUSH_NOTIFICATION",
+                "recipientUid": recipientUid
+            ]
+
+            do {
+                request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+            } catch {
+                completion()
+                return
+            }
+
+            URLSession.shared.dataTask(with: request) { _, response, error in
+                if let error = error {
+                    NSLog("[DeliveryApp] iOS background action network error: %@", error.localizedDescription)
+                } else if let httpResponse = response as? HTTPURLResponse {
+                    NSLog("[DeliveryApp] iOS background action response status: %d", httpResponse.statusCode)
+                }
+                completion()
+            }.resume()
         }
-        task.resume()
     }
 
     func applicationWillResignActive(_ application: UIApplication) {}
