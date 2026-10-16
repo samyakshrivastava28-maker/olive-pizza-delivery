@@ -283,7 +283,7 @@ public class DeliveryMessagingService extends FirebaseMessagingService {
         } else {
             Intent stop = new Intent(this, RiderBackgroundTrackingService.class);
             stop.setAction(RiderBackgroundTrackingService.ACTION_STOP);
-            try { startService(stop); } catch (Exception e) {
+            try { stopService(stop); } catch (Exception e) {
                 Log.w(TAG, "Could not stop tracking at the scheduled shift end.", e);
             }
         }
