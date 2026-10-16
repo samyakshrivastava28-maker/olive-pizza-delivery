@@ -163,7 +163,7 @@ export default function WorkScheduleEditor() {
         <div className="flex items-center gap-2 text-xs font-extrabold text-white"><BellRing className="h-4 w-4 text-amber-400" /> Work-time alert sounds</div>
         <label className="block space-y-1 text-[11px] text-slate-400"><span>When work starts</span><select value={schedule.startSound} onChange={e => setSchedule(prev => ({ ...prev, startSound: e.target.value as SoundName }))} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-xs font-bold text-white"><option value="new_order">New order chime</option><option value="order_alert">Work-start alert</option></select></label>
         <label className="block space-y-1 text-[11px] text-slate-400"><span>When work ends</span><select value={schedule.endSound} onChange={e => setSchedule(prev => ({ ...prev, endSound: e.target.value as SoundName }))} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-xs font-bold text-white"><option value="order_delivered">Work-ended chime</option><option value="order_confirmed">Soft confirmation</option></select></label>
-        <p className="text-[10px] leading-relaxed text-slate-500">Background alerts use the phone's notification-volume controls. You can mute or change notification sounds in system Settings.</p>
+        <p className="text-[10px] leading-relaxed text-slate-500">Background alerts use your phone's ringtone/alert volume and notification settings. You can change them in system Settings.</p>
       </div>
 
       {error && <div role="alert" className="rounded-xl border border-rose-500/25 bg-rose-500/10 p-3 text-xs text-rose-200">{error}</div>}
