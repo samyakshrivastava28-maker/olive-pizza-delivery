@@ -62,6 +62,16 @@ public class RiderBackgroundTrackingService extends Service implements LocationL
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private volatile long lastSentAt = 0L;
 
+    public static void stopTracking(Context context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .remove(PREF_UID).remove(PREF_BASE_URL).apply();
+        context.stopService(new Intent(context, RiderBackgroundTrackingService.class));
+    }
+
+    private void clearPersistedTrackingIntent() {
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().remove(PREF_UID).remove(PREF_BASE_URL).apply();
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -77,7 +87,7 @@ public class RiderBackgroundTrackingService extends Service implements LocationL
         String action = intent == null ? null : intent.getAction();
         if (ACTION_STOP.equals(action)) {
             removeUpdates();
-            getSharedPreferences(PREFS, MODE_PRIVATE).edit().remove(PREF_UID).remove(PREF_BASE_URL).apply();
+            clearPersistedTrackingIntent();
             riderUid = null;
             stopForeground(true);
             stopSelf();
@@ -99,6 +109,7 @@ public class RiderBackgroundTrackingService extends Service implements LocationL
         FirebaseUser currentUser = FirebaseAuth.getInstance().getCurrentUser();
         if (currentUser == null || riderUid == null || !riderUid.equals(currentUser.getUid())) {
             Log.w(TAG, "Refusing background tracking without the matching authenticated rider.");
+            clearPersistedTrackingIntent();
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -114,6 +125,7 @@ public class RiderBackgroundTrackingService extends Service implements LocationL
         boolean hasCoarse = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
         if (!hasFine && !hasCoarse) {
             Log.w(TAG, "Location permission is not granted; tracking service will stop.");
+            clearPersistedTrackingIntent();
             stopSelf();
             return;
         }
@@ -189,6 +201,7 @@ public class RiderBackgroundTrackingService extends Service implements LocationL
                     // Auth revoked or scheduled shift ended. Stop collection instead of retrying
                     // private location uploads while the account is no longer authorized/online.
                     new android.os.Handler(Looper.getMainLooper()).post(() -> {
+                        clearPersistedTrackingIntent();
                         removeUpdates();
                         stopForeground(true);
                         stopSelf();
@@ -247,8 +260,8 @@ public class RiderBackgroundTrackingService extends Service implements LocationL
 
     @Override public void onDestroy() {
         removeUpdates();
-        // A deliberate stop (shift end/offline/logout) removes persisted tracking eligibility.
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit().remove(PREF_UID).remove(PREF_BASE_URL).apply();
+        // Keep the persisted rider only if Android itself tears down this sticky service;
+        // explicit offline/shift-end paths clear it through stopTracking().
         io.shutdown();
         super.onDestroy();
     }
