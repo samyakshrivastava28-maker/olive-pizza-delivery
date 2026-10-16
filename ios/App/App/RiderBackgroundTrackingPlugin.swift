@@ -15,10 +15,18 @@ public class RiderBackgroundTrackingPlugin: CAPPlugin, CAPBridgedPlugin, CLLocat
     private static let uidKey = "olive_rider_background_tracking_uid"
     private var locationManager: CLLocationManager?
     private var riderUid: String?
+    private var shiftEndObserver: NSObjectProtocol?
 
     override public func load() {
         super.load()
         configureLocationManager()
+        shiftEndObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("OliveRiderBackgroundTrackingStop"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.stopPersistedTracking()
+        }
         if let savedUid = UserDefaults.standard.string(forKey: Self.uidKey), !savedUid.isEmpty {
             riderUid = savedUid
             startIfAuthorized()
@@ -66,15 +74,24 @@ public class RiderBackgroundTrackingPlugin: CAPPlugin, CAPBridgedPlugin, CLLocat
     }
 
     @objc public func stop(_ call: CAPPluginCall) {
+        stopPersistedTracking()
+        call.resolve(["state": "stopped"])
+    }
+
+    private func stopPersistedTracking() {
         UserDefaults.standard.removeObject(forKey: Self.uidKey)
         riderUid = nil
         if let manager = locationManager {
             manager.stopUpdatingLocation()
             manager.stopMonitoringSignificantLocationChanges()
             manager.allowsBackgroundLocationUpdates = false
-            manager.delegate = nil
         }
-        call.resolve(["state": "stopped"])
+    }
+
+    deinit {
+        if let observer = shiftEndObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     private func configureLocationManager() {
