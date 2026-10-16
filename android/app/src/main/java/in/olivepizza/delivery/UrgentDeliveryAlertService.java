@@ -26,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * UrgentDeliveryAlertService — Production continuous looping alarm service for delivery assignments.
  *
- * Runs as a foreground service with continuous USAGE_ALARM audio until rider interacts
+ * Runs as a foreground service with custom order audio routed through ringtone volume until status changes
  * (Accept, Decline, Open, or Cancel). Uses order-specific alert tracking to prevent duplicate loops.
  */
 public class UrgentDeliveryAlertService extends Service {
@@ -192,9 +192,12 @@ public class UrgentDeliveryAlertService extends Service {
                 mediaPlayer = null;
             }
 
-            Uri alertUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+            Uri alertUri = int soundId = getResources().getIdentifier("new_order", "raw", getPackageName());
+            Uri alertUri = soundId != 0
+                ? Uri.parse("android.resource://" + getPackageName() + "/" + soundId)
+                : RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
             if (alertUri == null) {
-                alertUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+                alertUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
             }
 
             mediaPlayer = new MediaPlayer();
