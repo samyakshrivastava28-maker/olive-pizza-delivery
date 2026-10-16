@@ -12,8 +12,12 @@ const nativeTracking = registerPlugin<RiderTrackingPlugin>('RiderBackgroundTrack
  * the app activity is backgrounded. iOS uses its native location capability
  * and remains governed by iOS background/force-quit behavior.
  */
+export function supportsNativeRiderBackgroundTracking(): boolean {
+  return ['android', 'ios'].includes(Capacitor.getPlatform());
+}
+
 export async function startRiderBackgroundTracking(uid?: string | null): Promise<void> {
-  if (!['android', 'ios'].includes(Capacitor.getPlatform()) || !uid) return;
+  if (!supportsNativeRiderBackgroundTracking() || !uid) return;
   await nativeTracking.start({ uid, apiBaseUrl: getApiBaseUrl() || PRODUCTION_BACKEND_URL });
 }
 
