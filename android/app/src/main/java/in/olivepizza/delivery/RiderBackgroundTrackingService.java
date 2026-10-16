@@ -47,10 +47,15 @@ public class RiderBackgroundTrackingService extends Service implements LocationL
     public static final String ACTION_START = "in.olivepizza.delivery.START_BACKGROUND_TRACKING";
     public static final String ACTION_STOP = "in.olivepizza.delivery.STOP_BACKGROUND_TRACKING";
     public static final String EXTRA_UID = "riderUid";
+    public static final String EXTRA_BASE_URL = "apiBaseUrl";
+    private static final String PREFS = "olive_rider_tracking";
+    private static final String PREF_UID = "uid";
+    private static final String PREF_BASE_URL = "apiBaseUrl";
+    private static final String DEFAULT_BASE_URL = "https://olivepizza-owner.onrender.com";
     private static final String TAG = "RiderBackgroundTracking";
     private static final String CHANNEL_ID = "olive_rider_background_location";
     private static final int NOTIFICATION_ID = 732041;
-    private static final String STATUS_URL = "https://olivepizza-owner.onrender.com/api/delivery/rider/status";
+    private String backendBaseUrl = DEFAULT_BASE_URL;
 
     private String riderUid;
     private LocationManager locationManager;
@@ -61,6 +66,9 @@ public class RiderBackgroundTrackingService extends Service implements LocationL
     public void onCreate() {
         super.onCreate();
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        riderUid = prefs.getString(PREF_UID, null);
+        backendBaseUrl = normalizeBaseUrl(prefs.getString(PREF_BASE_URL, DEFAULT_BASE_URL));
         createChannel();
     }
 
@@ -69,6 +77,8 @@ public class RiderBackgroundTrackingService extends Service implements LocationL
         String action = intent == null ? null : intent.getAction();
         if (ACTION_STOP.equals(action)) {
             removeUpdates();
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().remove(PREF_UID).remove(PREF_BASE_URL).apply();
+            riderUid = null;
             stopForeground(true);
             stopSelf();
             return START_NOT_STICKY;
@@ -76,6 +86,15 @@ public class RiderBackgroundTrackingService extends Service implements LocationL
 
         if (intent != null && intent.getStringExtra(EXTRA_UID) != null) {
             riderUid = intent.getStringExtra(EXTRA_UID);
+        }
+        if (intent != null && intent.getStringExtra(EXTRA_BASE_URL) != null) {
+            backendBaseUrl = normalizeBaseUrl(intent.getStringExtra(EXTRA_BASE_URL));
+        }
+        if (riderUid != null && !riderUid.isEmpty()) {
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putString(PREF_UID, riderUid)
+                .putString(PREF_BASE_URL, backendBaseUrl)
+                .apply();
         }
         FirebaseUser currentUser = FirebaseAuth.getInstance().getCurrentUser();
         if (currentUser == null || riderUid == null || !riderUid.equals(currentUser.getUid())) {
@@ -152,7 +171,7 @@ public class RiderBackgroundTrackingService extends Service implements LocationL
             body.put("longitude", lng);
             body.put("accuracy", accuracy);
             body.put("backgroundService", true);
-            connection = (HttpURLConnection) new URL(STATUS_URL).openConnection();
+            connection = (HttpURLConnection) new URL(backendBaseUrl + "/api/delivery/rider/status").openConnection();
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(8000);
             connection.setReadTimeout(8000);
@@ -181,6 +200,13 @@ public class RiderBackgroundTrackingService extends Service implements LocationL
         } finally {
             if (connection != null) connection.disconnect();
         }
+    }
+
+    private String normalizeBaseUrl(String value) {
+        if (value == null || value.trim().isEmpty()) return DEFAULT_BASE_URL;
+        String clean = value.trim().replaceAll("/+$", "");
+        if (!clean.startsWith("https://") && !clean.startsWith("http://")) return DEFAULT_BASE_URL;
+        return clean;
     }
 
     private Notification buildOngoingNotification() {
@@ -221,6 +247,8 @@ public class RiderBackgroundTrackingService extends Service implements LocationL
 
     @Override public void onDestroy() {
         removeUpdates();
+        // A deliberate stop (shift end/offline/logout) removes persisted tracking eligibility.
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().remove(PREF_UID).remove(PREF_BASE_URL).apply();
         io.shutdown();
         super.onDestroy();
     }
