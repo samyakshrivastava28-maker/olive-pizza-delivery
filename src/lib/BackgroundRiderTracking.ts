@@ -1,7 +1,8 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { getApiBaseUrl, PRODUCTION_BACKEND_URL } from './api';
 
 interface RiderTrackingPlugin {
-  start(options: { uid: string }): Promise<void>;
+  start(options: { uid: string; apiBaseUrl: string }): Promise<void>;
   stop(): Promise<void>;
 }
 const nativeTracking = registerPlugin<RiderTrackingPlugin>('RiderBackgroundTracking');
@@ -13,7 +14,7 @@ const nativeTracking = registerPlugin<RiderTrackingPlugin>('RiderBackgroundTrack
  */
 export async function startRiderBackgroundTracking(uid?: string | null): Promise<void> {
   if (!['android', 'ios'].includes(Capacitor.getPlatform()) || !uid) return;
-  await nativeTracking.start({ uid });
+  await nativeTracking.start({ uid, apiBaseUrl: getApiBaseUrl() || PRODUCTION_BACKEND_URL });
 }
 
 export async function stopRiderBackgroundTracking(): Promise<void> {
