@@ -12,6 +12,7 @@ public class RiderBackgroundTrackingPlugin extends Plugin {
     @PluginMethod
     public void start(PluginCall call) {
         String uid = call.getString("uid");
+        String apiBaseUrl = call.getString("apiBaseUrl");
         if (uid == null || uid.trim().isEmpty()) {
             call.reject("An authenticated rider account is required.");
             return;
@@ -19,6 +20,7 @@ public class RiderBackgroundTrackingPlugin extends Plugin {
         Intent intent = new Intent(getContext(), RiderBackgroundTrackingService.class);
         intent.setAction(RiderBackgroundTrackingService.ACTION_START);
         intent.putExtra(RiderBackgroundTrackingService.EXTRA_UID, uid);
+        intent.putExtra(RiderBackgroundTrackingService.EXTRA_BASE_URL, apiBaseUrl);
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 getContext().startForegroundService(intent);
