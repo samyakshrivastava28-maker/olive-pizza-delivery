@@ -13,8 +13,13 @@ public class RiderBackgroundTrackingPlugin: CAPPlugin, CAPBridgedPlugin, CLLocat
     ]
 
     private static let uidKey = "olive_rider_background_tracking_uid"
+    private static let baseUrlKey = "olive_rider_background_tracking_api_url"
+    private static let pendingShiftUidKey = "olive_rider_pending_shift_start_uid"
+    private static let defaultBackendBaseUrl = "https://olivepizza-owner.onrender.com"
     private var locationManager: CLLocationManager?
     private var riderUid: String?
+    private var backendBaseUrl = defaultBackendBaseUrl
+    private var shiftStartObserver: NSObjectProtocol?
     private var shiftEndObserver: NSObjectProtocol?
 
     override public func load() {
