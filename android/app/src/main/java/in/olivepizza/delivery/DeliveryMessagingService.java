@@ -310,9 +310,7 @@ public class DeliveryMessagingService extends FirebaseMessagingService {
                 Log.w(TAG, "Shift-start push was shown, but Android did not allow the location service to start from background.", e);
             }
         } else {
-            Intent stop = new Intent(this, RiderBackgroundTrackingService.class);
-            stop.setAction(RiderBackgroundTrackingService.ACTION_STOP);
-            try { stopService(stop); } catch (Exception e) {
+            try { RiderBackgroundTrackingService.stopTracking(this); } catch (Exception e) {
                 Log.w(TAG, "Could not stop tracking at the scheduled shift end.", e);
             }
         }
