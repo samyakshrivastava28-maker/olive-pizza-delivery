@@ -23,7 +23,7 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     private static final String TAG = "OliveDeliveryMainActivity";
 
-    public static final String CHANNEL_DELIVERY_ASSIGN  = "olive_delivery_assignment";
+    public static final String CHANNEL_DELIVERY_ASSIGN  = "olive_delivery_assignment_v2";
     public static final String CHANNEL_DELIVERY_UPDATES = "olive_delivery_updates";
     public static final String CHANNEL_SYSTEM           = "olive_system";
 
@@ -112,16 +112,15 @@ public class MainActivity extends BridgeActivity {
         NotificationChannel channel = new NotificationChannel(id, name, NotificationManager.IMPORTANCE_HIGH);
         channel.enableVibration(true);
         channel.setShowBadge(true);
-        channel.setBypassDnd(true);
 
-        Uri soundUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM);
+        Uri soundUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE);
         if (soundUri == null) {
             soundUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE);
         }
 
         AudioAttributes audioAttributes = new AudioAttributes.Builder()
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
                 .build();
         channel.setSound(soundUri, audioAttributes);
 
