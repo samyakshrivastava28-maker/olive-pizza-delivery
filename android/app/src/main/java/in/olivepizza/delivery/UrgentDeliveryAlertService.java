@@ -31,7 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class UrgentDeliveryAlertService extends Service {
     private static final String TAG = "UrgentDeliveryAlertSvc";
-    public static final String CHANNEL_ID = "olive_delivery_alarm_channel_v2";
+    public static final String CHANNEL_ID = "olive_delivery_alarm_channel_v3";
     public static final String ACTION_START_ALERT = "in.olivepizza.delivery.START_ALERT";
     public static final String ACTION_STOP_ALERT = "in.olivepizza.delivery.STOP_ALERT";
 
@@ -192,7 +192,7 @@ public class UrgentDeliveryAlertService extends Service {
                 mediaPlayer = null;
             }
 
-            Uri alertUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+            Uri alertUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
             if (alertUri == null) {
                 alertUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
             }
@@ -201,7 +201,7 @@ public class UrgentDeliveryAlertService extends Service {
             mediaPlayer.setDataSource(this, alertUri);
             mediaPlayer.setAudioAttributes(
                 new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                     .build()
             );
