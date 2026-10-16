@@ -33,6 +33,7 @@ public class ShiftNotificationActionReceiver extends BroadcastReceiver {
         String targetUid = intent.getStringExtra("riderUid");
         int notificationId = intent.getIntExtra("notificationId", 0);
         if ("in.olivepizza.delivery.DONE_SHIFT".equals(action)) {
+            RiderBackgroundTrackingService.stopTracking(context);
             NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
             if (manager != null) manager.cancel(notificationId);
             return;
