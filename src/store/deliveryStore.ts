@@ -429,6 +429,12 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
           });
           if (statusResult?.success === false) {
             console.warn('[DeliveryStore] Background-resume online sync was rejected:', statusResult.error);
+            if (statusResult.code === 'OUTSIDE_WORK_SCHEDULE' || statusResult.code === 'RIDER_ACCOUNT_INACTIVE' || statusResult.code === 'FORBIDDEN') {
+              await stopRiderBackgroundTracking().catch(() => {});
+              locationService.stopTracking();
+              set({ isOnline: false, isGpsLocked: false, isGpsActive: false, gpsStatus: 'OFFLINE' });
+              return false;
+            }
           }
         } catch {}
       }
