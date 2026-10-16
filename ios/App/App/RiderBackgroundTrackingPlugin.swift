@@ -173,6 +173,15 @@ public class RiderBackgroundTrackingPlugin: CAPPlugin, CAPBridgedPlugin, CLLocat
                     NSLog("[RiderBackgroundTracking] Location upload failed: %@", error.localizedDescription)
                 } else if let response = response as? HTTPURLResponse, !(200..<300).contains(response.statusCode) {
                     NSLog("[RiderBackgroundTracking] Location upload returned HTTP %d", response.statusCode)
+                    if [401, 403, 409].contains(response.statusCode) {
+                        // A revoked account or completed shift must stop collection, not retry forever.
+                        DispatchQueue.main.async {
+                            NotificationCenter.default.post(
+                                name: Notification.Name("OliveRiderBackgroundTrackingStop"),
+                                object: nil
+                            )
+                        }
+                    }
                 }
             }.resume()
         }
