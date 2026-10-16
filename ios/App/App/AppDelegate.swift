@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import UserNotifications
+import FirebaseAuth
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -79,6 +80,30 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             options: []
         )
 
+        // 5. Weekly work-time notifications (standard iOS actionable notifications; no system-wide overlay).
+        let workShiftContinueAction = UNNotificationAction(
+            identifier: "CONTINUE_SHIFT",
+            title: "Continue 1 Hour",
+            options: [.authenticationRequired, .foreground]
+        )
+        let workShiftDoneAction = UNNotificationAction(
+            identifier: "DONE_SHIFT",
+            title: "Done for Today",
+            options: [.authenticationRequired]
+        )
+        let workShiftEndedCategory = UNNotificationCategory(
+            identifier: "WORK_SHIFT_ENDED",
+            actions: [workShiftContinueAction, workShiftDoneAction],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+        let workShiftStartedCategory = UNNotificationCategory(
+            identifier: "WORK_SHIFT_STARTED",
+            actions: [viewOrderAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
         // 5. Security & System Alerts
         let viewAlertAction = UNNotificationAction(
             identifier: "VIEW_ALERT",
@@ -97,7 +122,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             acceptedCategory,
             pickedUpCategory,
             outForDeliveryCategory,
-            securityCategory
+            securityCategory,
+            workShiftEndedCategory,
+            workShiftStartedCategory
         ])
     }
 
@@ -138,6 +165,25 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
         let backgroundActions = ["ACCEPT_DELIVERY", "ACCEPT", "DECLINE_DELIVERY", "DECLINE", "PICKED_UP", "OUT_FOR_DELIVERY", "DELIVERED"]
 
+        if actionIdentifier == "CONTINUE_SHIFT" {
+            executeBackgroundShiftContinuation(userInfo: userInfo) {
+                NotificationCenter.default.post(
+                    name: Notification.Name("CapacitorNotificationAction"),
+                    object: ["action": actionIdentifier, "data": userInfo]
+                )
+                completionHandler()
+            }
+            return
+        }
+        if actionIdentifier == "DONE_SHIFT" {
+            NotificationCenter.default.post(
+                name: Notification.Name("CapacitorNotificationAction"),
+                object: ["action": actionIdentifier, "data": userInfo]
+            )
+            completionHandler()
+            return
+        }
+
         if backgroundActions.contains(actionIdentifier), let orderId = orderId, !orderId.isEmpty {
             executeBackgroundDeliveryAction(action: actionIdentifier, orderId: orderId, userInfo: userInfo) {
                 NotificationCenter.default.post(
@@ -158,6 +204,46 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                 ]
             )
             completionHandler()
+        }
+    }
+
+
+    private func executeBackgroundShiftContinuation(
+        userInfo: [AnyHashable: Any],
+        completion: @escaping () -> Void
+    ) {
+        guard
+            let targetUid = userInfo["riderUid"] as? String,
+            let user = Auth.auth().currentUser,
+            user.uid == targetUid,
+            let url = URL(string: "\(backendBaseUrl)/api/delivery/rider/schedule/continue")
+        else {
+            NSLog("[DeliveryApp] Ignoring shift continuation without matching authenticated rider.")
+            completion()
+            return
+        }
+
+        user.getIDTokenForcingRefresh(false) { token, error in
+            guard let token = token, error == nil else {
+                NSLog("[DeliveryApp] Could not obtain a valid token for shift continuation.")
+                completion()
+                return
+            }
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("DELIVERY", forHTTPHeaderField: "X-App-Target")
+            request.setValue("DELIVERY", forHTTPHeaderField: "X-App-Source")
+            request.httpBody = try? JSONSerialization.data(withJSONObject: ["minutes": 60], options: [])
+            URLSession.shared.dataTask(with: request) { _, response, error in
+                if let error = error {
+                    NSLog("[DeliveryApp] Shift extension failed: %@", error.localizedDescription)
+                } else if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                    NSLog("[DeliveryApp] Shift extension was rejected with HTTP %d", http.statusCode)
+                }
+                completion()
+            }.resume()
         }
     }
 
