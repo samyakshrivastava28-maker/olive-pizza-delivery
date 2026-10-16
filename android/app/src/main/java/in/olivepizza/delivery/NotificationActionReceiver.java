@@ -15,6 +15,8 @@ import androidx.work.ExistingWorkPolicy;
 import androidx.work.NetworkType;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -36,6 +38,7 @@ public class NotificationActionReceiver extends BroadcastReceiver {
         }
 
         String orderId = intent.getStringExtra("orderId");
+        String recipientUid = intent.getStringExtra("recipientUid");
         int notificationId = intent.getIntExtra("notificationId", orderId != null ? orderId.hashCode() : -1);
         String orderNumber = intent.getStringExtra("orderNumber");
         String customerName = intent.getStringExtra("customerName");
@@ -74,6 +77,15 @@ public class NotificationActionReceiver extends BroadcastReceiver {
             return;
         }
 
+        FirebaseUser signedInRider = FirebaseAuth.getInstance().getCurrentUser();
+        if (signedInRider == null || recipientUid == null || !signedInRider.getUid().equals(recipientUid)) {
+            Log.w(TAG, "Rejecting order action because the current signed-in rider does not match the assigned recipient.");
+            UrgentDeliveryAlertService.stopAlert(context, orderId);
+            NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (manager != null && notificationId != -1) manager.cancel(notificationId);
+            return;
+        }
+
         String canonicalAction = normalizeAction(rawAction);
 
         // Immediately stop continuous alarm looping upon rider action interaction
@@ -92,6 +104,7 @@ public class NotificationActionReceiver extends BroadcastReceiver {
 
             Data inputData = new Data.Builder()
                 .putString(DeliveryActionWorker.KEY_ORDER_ID, orderId)
+                .putString(DeliveryActionWorker.KEY_RECIPIENT_UID, recipientUid)
                 .putString(DeliveryActionWorker.KEY_ACTION, canonicalAction)
                 .putString(DeliveryActionWorker.KEY_REQUEST_ID, requestId)
                 .putInt(DeliveryActionWorker.KEY_NOTIFICATION_ID, notificationId)
