@@ -30,6 +30,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(RiderBackgroundTrackingPlugin.class);
         createNotificationChannels();
         super.onCreate(savedInstanceState);
     }
@@ -96,6 +97,11 @@ public class MainActivity extends BridgeActivity {
         createStandardChannel(nm, CHANNEL_DELIVERY_UPDATES, "Olive Delivery Updates");
         createStandardChannel(nm, CHANNEL_SYSTEM, "Olive System Alerts");
 
+        createShiftChannel(nm, "olive_shift_started_new_order", "Work time started — new order chime", "new_order");
+        createShiftChannel(nm, "olive_shift_started_order_alert", "Work time started — alert", "order_alert");
+        createShiftChannel(nm, "olive_shift_ended_order_delivered", "Work time ended — completion chime", "order_delivered");
+        createShiftChannel(nm, "olive_shift_ended_order_confirmed", "Work time ended — confirmation", "order_confirmed");
+
         Log.i(TAG, "Delivery notification channels initialized successfully.");
     }
 
@@ -118,6 +124,24 @@ public class MainActivity extends BridgeActivity {
                 .build();
         channel.setSound(soundUri, audioAttributes);
 
+        nm.createNotificationChannel(channel);
+    }
+
+    private void createShiftChannel(NotificationManager nm, String id, String name, String rawSoundName) {
+        if (nm.getNotificationChannel(id) != null) return;
+        NotificationChannel channel = new NotificationChannel(id, name, NotificationManager.IMPORTANCE_HIGH);
+        channel.enableVibration(true);
+        channel.setShowBadge(true);
+        channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+        int rawId = getResources().getIdentifier(rawSoundName, "raw", getPackageName());
+        if (rawId != 0) {
+            Uri soundUri = Uri.parse("android.resource://" + getPackageName() + "/" + rawId);
+            AudioAttributes attrs = new AudioAttributes.Builder()
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                    .build();
+            channel.setSound(soundUri, attrs);
+        }
         nm.createNotificationChannel(channel);
     }
 
