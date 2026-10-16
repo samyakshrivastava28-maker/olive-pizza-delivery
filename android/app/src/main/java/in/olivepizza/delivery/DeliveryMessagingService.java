@@ -111,7 +111,7 @@ public class DeliveryMessagingService extends FirebaseMessagingService {
                 String deliveryAddress = data.get("deliveryAddress");
 
                 // Start continuous foreground looping alarm service (single order instance)
-                UrgentDeliveryAlertService.startAlert(this, orderId, orderNumber, customerName, deliveryAddress);
+                UrgentDeliveryAlertService.startAlert(this, orderId, orderNumber, customerName, deliveryAddress, signedInRider.getUid());
             } else {
                 showStandardDeliveryNotification(data);
             }
