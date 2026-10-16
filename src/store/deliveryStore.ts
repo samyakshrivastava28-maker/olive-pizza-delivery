@@ -25,7 +25,7 @@ import type {
 } from '../types/delivery';
 
 import { locationService, type DeviceLocationState } from '../services/LocationService';
-import { startRiderBackgroundTracking, stopRiderBackgroundTracking } from '../lib/BackgroundRiderTracking';
+import { startRiderBackgroundTracking, stopRiderBackgroundTracking, supportsNativeRiderBackgroundTracking } from '../lib/BackgroundRiderTracking';
 
 interface DeliveryState {
   user: User | null;
@@ -381,7 +381,20 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
             })
           });
           if (res?.success !== false) {
-            await startRiderBackgroundTracking(uid).catch((error) => console.warn('[DeliveryStore] Native background tracking start notice:', error));
+            try {
+              await startRiderBackgroundTracking(uid);
+            } catch (error) {
+              console.error('[DeliveryStore] Native background tracking did not start; reverting online state:', error);
+              if (supportsNativeRiderBackgroundTracking()) {
+                await fetchApi('/api/delivery/rider/status', {
+                  method: 'POST',
+                  body: JSON.stringify({ isOnline: false })
+                }).catch(() => {});
+                locationService.stopTracking();
+                set({ isOnline: false, isGpsLocked: true, gpsStatus: locationService.getState(), isGpsActive: false });
+                return false;
+              }
+            }
             set({ isOnline: true, isGpsLocked: false, gpsStatus: 'ACTIVE', isGpsActive: true });
             return true;
           }
@@ -438,7 +451,21 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
           }
         } catch {}
       }
-      await startRiderBackgroundTracking(get().user?.uid).catch((error) => console.warn('[DeliveryStore] Native background tracking resume notice:', error));
+      try {
+        await startRiderBackgroundTracking(get().user?.uid);
+      } catch (error) {
+        console.error('[DeliveryStore] Native background tracking could not resume:', error);
+        if (supportsNativeRiderBackgroundTracking()) {
+          await fetchApi('/api/delivery/rider/status', {
+            method: 'POST',
+            body: JSON.stringify({ isOnline: false })
+          }).catch(() => {});
+          await stopRiderBackgroundTracking().catch(() => {});
+          locationService.stopTracking();
+          set({ isOnline: false, isGpsLocked: true, gpsStatus: locationService.getState(), isGpsActive: false });
+          return false;
+        }
+      }
       return true;
     } else {
       const state = locationService.getState();
