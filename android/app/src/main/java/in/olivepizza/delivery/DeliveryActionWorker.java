@@ -49,6 +49,7 @@ public class DeliveryActionWorker extends Worker {
     }
 
     public static final String KEY_ORDER_ID = "orderId";
+    public static final String KEY_RECIPIENT_UID = "recipientUid";
     public static final String KEY_ACTION = "action";
     public static final String KEY_REQUEST_ID = "requestId";
     public static final String KEY_NOTIFICATION_ID = "notificationId";
@@ -64,6 +65,7 @@ public class DeliveryActionWorker extends Worker {
     @Override
     public Result doWork() {
         String orderId = getInputData().getString(KEY_ORDER_ID);
+        String recipientUid = getInputData().getString(KEY_RECIPIENT_UID);
         String action = getInputData().getString(KEY_ACTION);
         String requestId = getInputData().getString(KEY_REQUEST_ID);
         int notificationId = getInputData().getInt(KEY_NOTIFICATION_ID, orderId != null ? orderId.hashCode() : -1);
@@ -71,8 +73,15 @@ public class DeliveryActionWorker extends Worker {
         String customerName = getInputData().getString(KEY_CUSTOMER_NAME);
         String deliveryAddress = getInputData().getString(KEY_DELIVERY_ADDRESS);
 
-        if (orderId == null || action == null) {
-            Log.e(TAG, "Missing orderId or action in worker data");
+        if (orderId == null || action == null || recipientUid == null || recipientUid.isEmpty()) {
+            Log.e(TAG, "Missing orderId, action, or authenticated recipient UID in worker data");
+            return Result.failure();
+        }
+
+        FirebaseUser currentUser = FirebaseAuth.getInstance().getCurrentUser();
+        if (currentUser == null || !recipientUid.equals(currentUser.getUid())) {
+            Log.w(TAG, "Refusing notification action because this worker no longer belongs to the assigned rider session.");
+            UrgentDeliveryAlertService.stopAlert(getApplicationContext(), orderId);
             return Result.failure();
         }
 
@@ -81,7 +90,11 @@ public class DeliveryActionWorker extends Worker {
         try {
             // 1. Obtain Fresh Firebase Auth ID Token for Rider
             FirebaseAuth auth = FirebaseAuth.getInstance();
-            FirebaseUser currentUser = auth.getCurrentUser();
+            currentUser = auth.getCurrentUser();
+            if (currentUser == null || !recipientUid.equals(currentUser.getUid())) {
+                Log.w(TAG, "Rider session changed before sending the order action.");
+                return Result.failure();
+            }
             String idToken = null;
 
             if (currentUser != null) {
@@ -93,6 +106,11 @@ public class DeliveryActionWorker extends Worker {
                 } catch (Exception e) {
                     Log.w(TAG, "Failed to get fresh Firebase token, will attempt request with cached token: " + e.getMessage());
                 }
+            }
+
+            if (idToken == null || idToken.isEmpty()) {
+                Log.w(TAG, "No Firebase ID token available; do not send an unauthenticated order action.");
+                return getRunAttemptCount() < 3 ? Result.retry() : Result.failure();
             }
 
             // 2. Perform Backend HTTP Request
@@ -141,7 +159,7 @@ public class DeliveryActionWorker extends Worker {
 
             if (responseCode >= 200 && responseCode < 300) {
                 // Update notification in tray with next stage
-                updateNotificationForNextStage(getApplicationContext(), notificationId, orderId, orderNumber, action, customerName, deliveryAddress);
+                updateNotificationForNextStage(getApplicationContext(), notificationId, orderId, orderNumber, action, customerName, deliveryAddress, recipientUid);
                 return Result.success();
             } else if (responseCode >= 400 && responseCode < 500) {
                 // Client error (e.g. 409 already accepted or 400 invalid state) - don't retry endlessly
@@ -166,7 +184,7 @@ public class DeliveryActionWorker extends Worker {
         }
     }
 
-    private void updateNotificationForNextStage(Context context, int notificationId, String orderId, String orderNumber, String completedAction, String customerName, String deliveryAddress) {
+    private void updateNotificationForNextStage(Context context, int notificationId, String orderId, String orderNumber, String completedAction, String customerName, String deliveryAddress, String recipientUid) {
         try {
             NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm == null) return;
@@ -244,6 +262,7 @@ public class DeliveryActionWorker extends Worker {
                 actionIntent.setAction("in.olivepizza.delivery.ACTION_" + nextActionName.toUpperCase());
                 actionIntent.putExtra("action", nextActionName);
                 actionIntent.putExtra("orderId", orderId);
+                actionIntent.putExtra("recipientUid", recipientUid);
                 actionIntent.putExtra("notificationId", notificationId);
                 actionIntent.putExtra("orderNumber", displayOrderNum);
                 actionIntent.putExtra("customerName", customerName);
