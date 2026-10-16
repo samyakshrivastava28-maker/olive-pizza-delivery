@@ -55,6 +55,7 @@ public class UrgentDeliveryAlertActivity extends AppCompatActivity {
     }
 
     private String orderId;
+    private String recipientUid;
     private String orderNumber;
     private String distance;
     private String eta;
@@ -78,6 +79,7 @@ public class UrgentDeliveryAlertActivity extends AppCompatActivity {
         // Parse intent extras
         Intent intent = getIntent();
         orderId = intent.getStringExtra("orderId");
+        recipientUid = intent.getStringExtra("recipientUid");
         orderNumber = intent.getStringExtra("orderNumber");
         distance = intent.getStringExtra("distance");
         eta = intent.getStringExtra("eta");
@@ -86,6 +88,15 @@ public class UrgentDeliveryAlertActivity extends AppCompatActivity {
         totalAmount = intent.getStringExtra("totalAmount");
         paymentMethod = intent.getStringExtra("paymentMethod");
         notificationId = intent.getIntExtra("notificationId", -1);
+
+        FirebaseUser signedInRider = FirebaseAuth.getInstance().getCurrentUser();
+        if (signedInRider == null || recipientUid == null || !signedInRider.getUid().equals(recipientUid)) {
+            Log.w(TAG, "Refusing to display or act on a delivery order alert for a different or unauthenticated rider.");
+            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (manager != null && notificationId != -1) manager.cancel(notificationId);
+            finish();
+            return;
+        }
 
         if (orderNumber == null || orderNumber.isEmpty()) {
             orderNumber = orderId != null ? "#" + orderId.substring(Math.max(0, orderId.length() - 6)).toUpperCase() : "#NEW";
