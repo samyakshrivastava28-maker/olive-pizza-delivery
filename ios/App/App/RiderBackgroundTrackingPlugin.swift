@@ -20,6 +20,21 @@ public class RiderBackgroundTrackingPlugin: CAPPlugin, CAPBridgedPlugin, CLLocat
     override public func load() {
         super.load()
         configureLocationManager()
+        backendBaseUrl = normalizeBaseUrl(UserDefaults.standard.string(forKey: Self.baseUrlKey))
+        shiftStartObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("OliveRiderBackgroundTrackingStart"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self,
+                  let info = notification.object as? [AnyHashable: Any],
+                  let uid = info["riderUid"] as? String,
+                  let user = Auth.auth().currentUser,
+                  user.uid == uid else { return }
+            self.riderUid = uid
+            UserDefaults.standard.set(uid, forKey: Self.uidKey)
+            self.startIfAuthorized()
+        }
         shiftEndObserver = NotificationCenter.default.addObserver(
             forName: Notification.Name("OliveRiderBackgroundTrackingStop"),
             object: nil,
@@ -27,9 +42,16 @@ public class RiderBackgroundTrackingPlugin: CAPPlugin, CAPBridgedPlugin, CLLocat
         ) { [weak self] _ in
             self?.stopPersistedTracking()
         }
-        if let savedUid = UserDefaults.standard.string(forKey: Self.uidKey), !savedUid.isEmpty {
-            riderUid = savedUid
+        let pendingUid = UserDefaults.standard.string(forKey: Self.pendingShiftUidKey)
+        let savedUid = UserDefaults.standard.string(forKey: Self.uidKey)
+        if let candidate = pendingUid ?? savedUid, !candidate.isEmpty,
+           let user = Auth.auth().currentUser, user.uid == candidate {
+            riderUid = candidate
+            UserDefaults.standard.set(candidate, forKey: Self.uidKey)
+            UserDefaults.standard.removeObject(forKey: Self.pendingShiftUidKey)
             startIfAuthorized()
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.pendingShiftUidKey)
         }
     }
 
@@ -49,6 +71,9 @@ public class RiderBackgroundTrackingPlugin: CAPPlugin, CAPBridgedPlugin, CLLocat
 
         riderUid = uid
         UserDefaults.standard.set(uid, forKey: Self.uidKey)
+        let requestedBaseUrl = call.getString("apiBaseUrl")
+        backendBaseUrl = normalizeBaseUrl(requestedBaseUrl)
+        UserDefaults.standard.set(backendBaseUrl, forKey: Self.baseUrlKey)
         configureLocationManager()
         guard let manager = locationManager else {
             call.reject("Could not initialize background location tracking.")
@@ -80,6 +105,8 @@ public class RiderBackgroundTrackingPlugin: CAPPlugin, CAPBridgedPlugin, CLLocat
 
     private func stopPersistedTracking() {
         UserDefaults.standard.removeObject(forKey: Self.uidKey)
+        UserDefaults.standard.removeObject(forKey: Self.baseUrlKey)
+        UserDefaults.standard.removeObject(forKey: Self.pendingShiftUidKey)
         riderUid = nil
         if let manager = locationManager {
             manager.stopUpdatingLocation()
@@ -92,6 +119,20 @@ public class RiderBackgroundTrackingPlugin: CAPPlugin, CAPBridgedPlugin, CLLocat
         if let observer = shiftEndObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        if let observer = shiftStartObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    private func normalizeBaseUrl(_ value: String?) -> String {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty,
+              let url = URL(string: value),
+              ["https", "http"].contains(url.scheme?.lowercased() ?? ""),
+              url.host != nil else {
+            return Self.defaultBackendBaseUrl
+        }
+        return value.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
 
     private func configureLocationManager() {
@@ -151,7 +192,7 @@ public class RiderBackgroundTrackingPlugin: CAPPlugin, CAPBridgedPlugin, CLLocat
                 NSLog("[RiderBackgroundTracking] Could not obtain a current auth token for location upload.")
                 return
             }
-            var request = URLRequest(url: URL(string: "https://olivepizza-owner.onrender.com/api/delivery/rider/status")!)
+            var request = URLRequest(url: URL(string: "\(backendBaseUrl)/api/delivery/rider/status")!)
             request.httpMethod = "POST"
             request.timeoutInterval = 10
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
