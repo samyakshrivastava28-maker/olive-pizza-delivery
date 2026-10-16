@@ -192,7 +192,7 @@ public class UrgentDeliveryAlertService extends Service {
                 mediaPlayer = null;
             }
 
-            Uri alertUri = int soundId = getResources().getIdentifier("new_order", "raw", getPackageName());
+            int soundId = getResources().getIdentifier("new_order", "raw", getPackageName());
             Uri alertUri = soundId != 0
                 ? Uri.parse("android.resource://" + getPackageName() + "/" + soundId)
                 : RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
