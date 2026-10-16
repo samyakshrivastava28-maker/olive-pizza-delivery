@@ -163,6 +163,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         let actionIdentifier = response.actionIdentifier
         let orderId = (userInfo["orderId"] as? String) ?? (userInfo["order_id"] as? String)
 
+        if actionIdentifier == "DONE_SHIFT" {
+            NotificationCenter.default.post(name: Notification.Name("OliveRiderBackgroundTrackingStop"), object: nil)
+            NotificationCenter.default.post(
+                name: Notification.Name("CapacitorNotificationAction"),
+                object: ["action": actionIdentifier, "data": userInfo]
+            )
+            completionHandler()
+            return
+        }
+
         let backgroundActions = ["ACCEPT_DELIVERY", "ACCEPT", "DECLINE_DELIVERY", "DECLINE", "PICKED_UP", "OUT_FOR_DELIVERY", "DELIVERED"]
 
         if actionIdentifier == "CONTINUE_SHIFT" {
