@@ -335,7 +335,7 @@ public class DeliveryMessagingService extends FirebaseMessagingService {
             Uri soundUri = Uri.parse("android.resource://" + getPackageName() + "/" + rawId);
             AudioAttributes attrs = new AudioAttributes.Builder()
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
                     .build();
             channel.setSound(soundUri, attrs);
         }
