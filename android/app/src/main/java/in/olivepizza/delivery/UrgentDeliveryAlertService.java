@@ -20,6 +20,8 @@ import android.util.Log;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -47,9 +49,15 @@ public class UrgentDeliveryAlertService extends Service {
     private Vibrator vibrator;
     private PowerManager.WakeLock wakeLock;
     private String currentOrderId;
+    private String currentRecipientUid;
 
     public static void startAlert(Context context, String orderId, String orderNumber, String customerName, String deliveryAddress) {
-        if (orderId == null || orderId.isEmpty()) return;
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        startAlert(context, orderId, orderNumber, customerName, deliveryAddress, user != null ? user.getUid() : null);
+    }
+
+    public static void startAlert(Context context, String orderId, String orderNumber, String customerName, String deliveryAddress, String recipientUid) {
+        if (orderId == null || orderId.isEmpty() || recipientUid == null || recipientUid.isEmpty()) return;
         if (activeAlertOrders.containsKey(orderId)) {
             Log.d(TAG, "Alert already looping for order: " + orderId + ", skipping duplicate start.");
             return;
@@ -62,6 +70,7 @@ public class UrgentDeliveryAlertService extends Service {
         intent.putExtra(EXTRA_ORDER_NUMBER, orderNumber);
         intent.putExtra(EXTRA_CUSTOMER_NAME, customerName);
         intent.putExtra(EXTRA_DELIVERY_ADDRESS, deliveryAddress);
+        intent.putExtra("recipientUid", recipientUid);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(intent);
@@ -108,17 +117,18 @@ public class UrgentDeliveryAlertService extends Service {
 
         if (ACTION_START_ALERT.equals(action)) {
             currentOrderId = intent.getStringExtra(EXTRA_ORDER_ID);
+            currentRecipientUid = intent.getStringExtra("recipientUid");
             String orderNumber = intent.getStringExtra(EXTRA_ORDER_NUMBER);
             String customerName = intent.getStringExtra(EXTRA_CUSTOMER_NAME);
             String deliveryAddress = intent.getStringExtra(EXTRA_DELIVERY_ADDRESS);
 
-            startUrgentAlarm(currentOrderId, orderNumber, customerName, deliveryAddress);
+            startUrgentAlarm(currentOrderId, orderNumber, customerName, deliveryAddress, currentRecipientUid);
         }
 
         return START_NOT_STICKY;
     }
 
-    private void startUrgentAlarm(String orderId, String orderNumber, String customerName, String deliveryAddress) {
+    private void startUrgentAlarm(String orderId, String orderNumber, String customerName, String deliveryAddress, String recipientUid) {
         acquireWakeLock();
         createNotificationChannel();
 
@@ -131,6 +141,7 @@ public class UrgentDeliveryAlertService extends Service {
         Intent contentIntent = new Intent(this, MainActivity.class);
         contentIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         contentIntent.putExtra("orderId", orderId);
+        contentIntent.putExtra("recipientUid", recipientUid);
         PendingIntent contentPi = PendingIntent.getActivity(this, notificationId, contentIntent, pendingFlags);
 
         // Fullscreen intent
@@ -140,6 +151,7 @@ public class UrgentDeliveryAlertService extends Service {
         fullScreenIntent.putExtra("orderNumber", orderNumber);
         fullScreenIntent.putExtra("customerName", customerName);
         fullScreenIntent.putExtra("deliveryAddress", deliveryAddress);
+        fullScreenIntent.putExtra("recipientUid", recipientUid);
         PendingIntent fullScreenPi = PendingIntent.getActivity(this, notificationId + 100, fullScreenIntent, pendingFlags);
 
         // Action: Accept Delivery
@@ -151,6 +163,7 @@ public class UrgentDeliveryAlertService extends Service {
         acceptIntent.putExtra("orderNumber", orderNumber);
         acceptIntent.putExtra("customerName", customerName);
         acceptIntent.putExtra("deliveryAddress", deliveryAddress);
+        acceptIntent.putExtra("recipientUid", recipientUid);
         PendingIntent acceptPi = PendingIntent.getBroadcast(this, notificationId + 1, acceptIntent, pendingFlags);
 
         // Action: Decline Delivery
@@ -159,6 +172,7 @@ public class UrgentDeliveryAlertService extends Service {
         declineIntent.putExtra("action", "decline_delivery");
         declineIntent.putExtra("orderId", orderId);
         declineIntent.putExtra("notificationId", notificationId);
+        declineIntent.putExtra("recipientUid", recipientUid);
         PendingIntent declinePi = PendingIntent.getBroadcast(this, notificationId + 2, declineIntent, pendingFlags);
 
         String title = "NEW DELIVERY ASSIGNMENT #" + (orderNumber != null ? orderNumber : "");
