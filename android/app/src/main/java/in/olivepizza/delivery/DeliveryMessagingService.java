@@ -60,9 +60,32 @@ public class DeliveryMessagingService extends FirebaseMessagingService {
                 handleWorkShiftNotification(data, "WORK_SHIFT_STARTED".equalsIgnoreCase(shiftType));
                 return;
             }
-            boolean isAssignment = "delivery_assigned".equalsIgnoreCase(stage) ||
-                                  "partner_assigned".equalsIgnoreCase(stage) ||
-                                  "alarm_actionable".equalsIgnoreCase(data.get("category"));
+
+            FirebaseUser signedInRider = FirebaseAuth.getInstance().getCurrentUser();
+            String recipientUid = data.get("recipientUid");
+            if (recipientUid != null && (signedInRider == null || !recipientUid.equals(signedInRider.getUid()))) {
+                Log.w(TAG, "Ignoring operational order push for a different authenticated rider.");
+                return;
+            }
+
+            boolean isAssignmentStage = "delivery_assigned".equalsIgnoreCase(stage)
+                || "partner_assigned".equalsIgnoreCase(stage)
+                || "rider_assignment".equalsIgnoreCase(data.get("type"))
+                || "DELIVERY_ASSIGNED".equalsIgnoreCase(data.get("eventType"));
+            boolean isAssignment = isAssignmentStage
+                || ("alarm_actionable".equalsIgnoreCase(data.get("category"))
+                    && (stage == null || stage.isEmpty())
+                    && isAssignmentStage);
+
+            // A new status update for this same order retires its old looping assignment alert.
+            // Do this before showing the current status notification, even when the user didn't
+            // open the earlier alert to press one of its buttons.
+            String updatedOrderId = data.get("orderId") != null ? data.get("orderId") : data.get("order_id");
+            if (!isAssignment && updatedOrderId != null && !updatedOrderId.isEmpty()) {
+                UrgentDeliveryAlertService.stopAlert(this, updatedOrderId);
+                NotificationManager currentManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                if (currentManager != null) currentManager.cancel(updatedOrderId.hashCode());
+            }
 
             if ("stop_alert".equalsIgnoreCase(action)) {
                 String orderId = data.get("orderId");
