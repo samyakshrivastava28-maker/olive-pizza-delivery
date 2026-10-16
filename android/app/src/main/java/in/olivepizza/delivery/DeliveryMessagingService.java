@@ -31,7 +31,7 @@ import java.util.Map;
  */
 public class DeliveryMessagingService extends FirebaseMessagingService {
     private static final String TAG = "DeliveryMessagingService";
-    private static final String CHANNEL_ID_ALERT = "olive_delivery_alarm_channel_v2";
+    private static final String CHANNEL_ID_ALERT = "olive_delivery_alarm_channel_v3";
     private static final String CHANNEL_ID_ACTIONS = "olive_delivery_actions_v2";
 
     @Override
