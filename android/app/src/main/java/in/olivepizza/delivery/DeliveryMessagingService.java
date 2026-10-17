@@ -18,6 +18,8 @@ import androidx.core.app.NotificationCompat;
 
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -29,7 +31,7 @@ import java.util.Map;
  */
 public class DeliveryMessagingService extends FirebaseMessagingService {
     private static final String TAG = "DeliveryMessagingService";
-    private static final String CHANNEL_ID_ALERT = "olive_delivery_alarm_channel_v2";
+    private static final String CHANNEL_ID_ALERT = "olive_delivery_alarm_channel_v3";
     private static final String CHANNEL_ID_ACTIONS = "olive_delivery_actions_v2";
 
     @Override
@@ -53,9 +55,37 @@ public class DeliveryMessagingService extends FirebaseMessagingService {
 
             String stage = data.get("stage");
             String action = data.get("action");
-            boolean isAssignment = "delivery_assigned".equalsIgnoreCase(stage) ||
-                                  "partner_assigned".equalsIgnoreCase(stage) ||
-                                  "alarm_actionable".equalsIgnoreCase(data.get("category"));
+            String shiftType = data.get("type");
+            if ("WORK_SHIFT_STARTED".equalsIgnoreCase(shiftType) || "WORK_SHIFT_ENDED".equalsIgnoreCase(shiftType)) {
+                handleWorkShiftNotification(data, "WORK_SHIFT_STARTED".equalsIgnoreCase(shiftType));
+                return;
+            }
+
+            FirebaseUser signedInRider = FirebaseAuth.getInstance().getCurrentUser();
+            String recipientUid = data.get("recipientUid");
+            if (recipientUid != null && (signedInRider == null || !recipientUid.equals(signedInRider.getUid()))) {
+                Log.w(TAG, "Ignoring operational order push for a different authenticated rider.");
+                return;
+            }
+
+            boolean isAssignmentStage = "delivery_assigned".equalsIgnoreCase(stage)
+                || "partner_assigned".equalsIgnoreCase(stage)
+                || "rider_assignment".equalsIgnoreCase(data.get("type"))
+                || "DELIVERY_ASSIGNED".equalsIgnoreCase(data.get("eventType"));
+            boolean isAssignment = isAssignmentStage
+                || ("alarm_actionable".equalsIgnoreCase(data.get("category"))
+                    && (stage == null || stage.isEmpty())
+                    && isAssignmentStage);
+
+            // A new status update for this same order retires its old looping assignment alert.
+            // Do this before showing the current status notification, even when the user didn't
+            // open the earlier alert to press one of its buttons.
+            String updatedOrderId = data.get("orderId") != null ? data.get("orderId") : data.get("order_id");
+            if (!isAssignment && updatedOrderId != null && !updatedOrderId.isEmpty()) {
+                UrgentDeliveryAlertService.stopAlert(this, updatedOrderId);
+                NotificationManager currentManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                if (currentManager != null) currentManager.cancel(updatedOrderId.hashCode());
+            }
 
             if ("stop_alert".equalsIgnoreCase(action)) {
                 String orderId = data.get("orderId");
@@ -65,6 +95,12 @@ public class DeliveryMessagingService extends FirebaseMessagingService {
                     if (nm != null) nm.cancel(orderId.hashCode());
                 }
             } else if (isAssignment) {
+                FirebaseUser signedInRider = FirebaseAuth.getInstance().getCurrentUser();
+                String recipientUid = data.get("recipientUid");
+                if (signedInRider == null || recipientUid == null || !signedInRider.getUid().equals(recipientUid)) {
+                    Log.w(TAG, "Ignoring delivery alert because the current authenticated rider does not match the target UID.");
+                    return;
+                }
                 wakeScreen(powerManager);
                 String orderId = data.get("orderId");
                 String orderNumber = data.get("orderNumber");
@@ -75,7 +111,7 @@ public class DeliveryMessagingService extends FirebaseMessagingService {
                 String deliveryAddress = data.get("deliveryAddress");
 
                 // Start continuous foreground looping alarm service (single order instance)
-                UrgentDeliveryAlertService.startAlert(this, orderId, orderNumber, customerName, deliveryAddress);
+                UrgentDeliveryAlertService.startAlert(this, orderId, orderNumber, customerName, deliveryAddress, signedInRider.getUid());
             } else {
                 showStandardDeliveryNotification(data);
             }
@@ -200,6 +236,86 @@ public class DeliveryMessagingService extends FirebaseMessagingService {
         nm.notify(notificationId, builder.build());
     }
 
+
+    private void handleWorkShiftNotification(Map<String, String> data, boolean started) {
+        String targetUid = data.get("riderUid");
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        // Never show operational schedule actions on a device signed in as a different account.
+        if (user == null || targetUid == null || !targetUid.equals(user.getUid())) {
+            Log.w(TAG, "Ignoring shift notification because the authenticated rider does not match.");
+            return;
+        }
+
+        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm == null) return;
+        createNotificationChannels(nm);
+
+        String title = data.getOrDefault("title", started ? "Your work time has started" : "Your work time ended for today");
+        String body = data.getOrDefault("body", started
+                ? "You are scheduled and now marked online."
+                : "You are offline. Continue work or finish for today.");
+        String sound = data.getOrDefault("sound", started ? "new_order" : "order_delivered");
+        String channel = data.getOrDefault("channelId", started
+                ? "olive_shift_started_new_order" : "olive_shift_ended_order_delivered");
+        int notificationId = ("olive-shift:" + targetUid + ":" + data.getOrDefault("eventId", started ? "start" : "end")).hashCode();
+        int pendingFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+                : PendingIntent.FLAG_UPDATE_CURRENT;
+
+        Intent contentIntent = new Intent(this, MainActivity.class);
+        contentIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        contentIntent.putExtra("openWorkSchedule", true);
+        contentIntent.putExtra("continueWork", !started);
+        contentIntent.putExtra("riderUid", targetUid);
+        PendingIntent contentPi = PendingIntent.getActivity(this, notificationId, contentIntent, pendingFlags);
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, channel)
+                .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+                .setContentIntent(contentPi)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
+                .setAutoCancel(started)
+                .setOngoing(!started)
+                .setOnlyAlertOnce(true);
+
+        if (!started) {
+            Intent continueIntent = new Intent(this, ShiftNotificationActionReceiver.class);
+            continueIntent.setAction("in.olivepizza.delivery.CONTINUE_SHIFT");
+            continueIntent.putExtra("riderUid", targetUid);
+            continueIntent.putExtra("notificationId", notificationId);
+            PendingIntent continuePi = PendingIntent.getBroadcast(this, notificationId + 1, continueIntent, pendingFlags);
+
+            Intent doneIntent = new Intent(this, ShiftNotificationActionReceiver.class);
+            doneIntent.setAction("in.olivepizza.delivery.DONE_SHIFT");
+            doneIntent.putExtra("riderUid", targetUid);
+            doneIntent.putExtra("notificationId", notificationId);
+            PendingIntent donePi = PendingIntent.getBroadcast(this, notificationId + 2, doneIntent, pendingFlags);
+
+            builder.addAction(android.R.drawable.ic_media_play, "CONTINUE 1 HOUR", continuePi);
+            builder.addAction(android.R.drawable.ic_menu_close_clear_cancel, "DONE", donePi);
+        }
+        nm.notify(notificationId, builder.build());
+
+        if (started) {
+            Intent tracking = new Intent(this, RiderBackgroundTrackingService.class);
+            tracking.setAction(RiderBackgroundTrackingService.ACTION_START);
+            tracking.putExtra(RiderBackgroundTrackingService.EXTRA_UID, targetUid);
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(tracking);
+                else startService(tracking);
+            } catch (Exception e) {
+                Log.w(TAG, "Shift-start push was shown, but Android did not allow the location service to start from background.", e);
+            }
+        } else {
+            try { RiderBackgroundTrackingService.stopTracking(this); } catch (Exception e) {
+                Log.w(TAG, "Could not stop tracking at the scheduled shift end.", e);
+            }
+        }
+    }
+
     private void createNotificationChannels(NotificationManager nm) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             // Alarm Channel
@@ -222,6 +338,28 @@ public class DeliveryMessagingService extends FirebaseMessagingService {
             actionsChannel.setDescription("Actionable notifications for active orders");
             actionsChannel.enableVibration(true);
             nm.createNotificationChannel(actionsChannel);
+
+            createShiftChannel(nm, "olive_shift_started_new_order", "Work time started — new order chime", "new_order");
+            createShiftChannel(nm, "olive_shift_started_order_alert", "Work time started — alert", "order_alert");
+            createShiftChannel(nm, "olive_shift_ended_order_delivered", "Work time ended — completion chime", "order_delivered");
+            createShiftChannel(nm, "olive_shift_ended_order_confirmed", "Work time ended — confirmation", "order_confirmed");
         }
+    }
+
+    private void createShiftChannel(NotificationManager manager, String id, String name, String rawSoundName) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || manager.getNotificationChannel(id) != null) return;
+        NotificationChannel channel = new NotificationChannel(id, name, NotificationManager.IMPORTANCE_HIGH);
+        channel.enableVibration(true);
+        channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+        int rawId = getResources().getIdentifier(rawSoundName, "raw", getPackageName());
+        if (rawId != 0) {
+            Uri soundUri = Uri.parse("android.resource://" + getPackageName() + "/" + rawId);
+            AudioAttributes attrs = new AudioAttributes.Builder()
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                    .build();
+            channel.setSound(soundUri, attrs);
+        }
+        manager.createNotificationChannel(channel);
     }
 }

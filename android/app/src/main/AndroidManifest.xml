@@ -60,6 +60,13 @@
             </intent-filter>
         </service>
 
+        <!-- Rider location continues in a visible foreground service while the rider is online. -->
+        <service
+            android:name=".RiderBackgroundTrackingService"
+            android:foregroundServiceType="location"
+            android:stopWithTask="false"
+            android:exported="false" />
+
         <!-- Continuous Looping Urgent Alert Service -->
         <service
             android:name=".UrgentDeliveryAlertService"
@@ -88,6 +95,10 @@
                 <action android:name="DELIVERED" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".ShiftNotificationActionReceiver"
+            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
