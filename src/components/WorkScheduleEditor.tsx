@@ -34,7 +34,7 @@ export default function WorkScheduleEditor() {
       setSchedule({
         ...EMPTY,
         ...result.schedule,
-        slots: (result.schedule.slots || []).map((slot, index) => ({
+        slots: ((result.schedule.slots || []) as Slot[]).map((slot: Slot, index: number) => ({
           ...slot,
           id: slot.id || `slot_${index + 1}`,
           daysOfWeek: Array.isArray(slot.daysOfWeek) ? slot.daysOfWeek : []
