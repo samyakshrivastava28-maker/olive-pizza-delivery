@@ -233,16 +233,20 @@ export const PersistentRiderOrderSheet: React.FC<PersistentRiderOrderSheetProps>
     : 81.0347;
 
   let distanceKm: number | null = null;
+  let distanceMeters: number | null = null;
   let etaMinutes: number | null = null;
 
   if (currentLocation && destLat && destLng) {
-    const meters = calculateDistanceMeters(currentLocation.lat, currentLocation.lng, destLat, destLng);
-    distanceKm = Math.round((meters / 1000) * 10) / 10;
+    distanceMeters = calculateDistanceMeters(currentLocation.lat, currentLocation.lng, destLat, destLng);
+    distanceKm = Math.round((distanceMeters / 1000) * 10) / 10;
     etaMinutes = Math.max(2, Math.round((distanceKm / 25) * 60)); // ~25km/h motorbike speed
   } else if (order.deliveryDistanceKm) {
     distanceKm = order.deliveryDistanceKm;
+    distanceMeters = distanceKm * 1000;
     etaMinutes = order.deliveryDurationMin || Math.max(3, Math.round((distanceKm / 25) * 60));
   }
+
+  const isGeofenceBreached = currentStage === 'ARRIVED' && distanceMeters != null && distanceMeters > 50;
 
   // Navigation URL
   const navUrl = destLat && destLng
@@ -948,12 +952,26 @@ export const PersistentRiderOrderSheet: React.FC<PersistentRiderOrderSheetProps>
 
             {/* ── STICKY BOTTOM ACTION FOOTER ── */}
             <div className="p-3.5 bg-[#0F172A] border-t border-slate-800/90 shrink-0 space-y-2">
+              {currentStage === 'ARRIVED' && distanceMeters != null && (
+                <div className={`flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-semibold ${
+                  distanceMeters <= 50 
+                    ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+                    : 'bg-amber-500/10 border border-amber-500/30 text-amber-400'
+                }`}>
+                  <span className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full ${distanceMeters <= 50 ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                    {distanceMeters <= 50 ? 'Within 50m customer gate' : `Outside 50m gate (${Math.round(distanceMeters)}m away)`}
+                  </span>
+                  <span className="text-[10px] text-slate-400">Gate: 50m</span>
+                </div>
+              )}
+
               <button
                 type="button"
-                disabled={isProcessingAction || (currentStage === 'ARRIVED' && isPaymentPending)}
+                disabled={isProcessingAction || (currentStage === 'ARRIVED' && (isPaymentPending || isGeofenceBreached))}
                 onClick={handleExecuteCurrentAction}
                 className={`w-full py-3.5 px-4 rounded-2xl font-black text-sm uppercase tracking-wide flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer disabled:opacity-50 ${
-                  currentStage === 'ARRIVED' && isPaymentPending
+                  currentStage === 'ARRIVED' && (isPaymentPending || isGeofenceBreached)
                     ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
                     : currentStage === 'DELIVERED'
                     ? 'bg-emerald-600 text-white'
@@ -971,6 +989,11 @@ export const PersistentRiderOrderSheet: React.FC<PersistentRiderOrderSheetProps>
                   <>
                     <Lock className="w-4 h-4 text-amber-400" />
                     <span>Collect ₹{order.totalAmount} to Unlock</span>
+                  </>
+                ) : currentStage === 'ARRIVED' && isGeofenceBreached ? (
+                  <>
+                    <Lock className="w-4 h-4 text-rose-400" />
+                    <span>Within 50m Required ({Math.round(distanceMeters!)}m away)</span>
                   </>
                 ) : (
                   <>
