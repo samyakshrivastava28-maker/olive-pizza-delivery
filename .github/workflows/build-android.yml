@@ -2,7 +2,7 @@ name: Build Android APK — Delivery
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'fix/**', 'feat/**']
     tags:
       - 'v*'
   pull_request:
