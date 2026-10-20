@@ -95,8 +95,12 @@ public class DeliveryMessagingService extends FirebaseMessagingService {
                     if (nm != null) nm.cancel(orderId.hashCode());
                 }
             } else if (isAssignment) {
-                FirebaseUser signedInRider = FirebaseAuth.getInstance().getCurrentUser();
-                String recipientUid = data.get("recipientUid");
+                if (signedInRider == null) {
+                    signedInRider = FirebaseAuth.getInstance().getCurrentUser();
+                }
+                if (recipientUid == null) {
+                    recipientUid = data.get("recipientUid");
+                }
                 if (signedInRider == null || recipientUid == null || !signedInRider.getUid().equals(recipientUid)) {
                     Log.w(TAG, "Ignoring delivery alert because the current authenticated rider does not match the target UID.");
                     return;
