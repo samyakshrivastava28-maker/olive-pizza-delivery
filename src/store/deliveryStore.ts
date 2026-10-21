@@ -202,6 +202,11 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
 
         if (resp.ok && authData?.authorized) {
           const u = authData.user || {};
+          let resolvedBranchId = u.branchId || 'main_branch';
+          if (resolvedBranchId === 'fra_primary' || !resolvedBranchId) resolvedBranchId = 'main_branch';
+          let resolvedFranchiseId = u.franchiseId || 'fra_rajnandgaon';
+          if (resolvedFranchiseId === 'fra_primary' || !resolvedFranchiseId) resolvedFranchiseId = 'fra_rajnandgaon';
+
           const profile: RiderProfile = {
             uid: firebaseUser.uid,
             id: firebaseUser.uid,
@@ -212,8 +217,8 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
             vehicleType: u.vehicleType || 'Vehicle',
             vehicleNumber: u.vehicleNumber || '',
             organizationId: u.organizationId || 'org_olive_pizza',
-            franchiseId: u.franchiseId || '',
-            branchId: u.branchId || '',
+            franchiseId: resolvedFranchiseId,
+            branchId: resolvedBranchId,
             branchName: u.branchName || 'Olive Pizza',
             branchAddress: u.branchAddress || '',
             branchPhone: u.branchPhone || '',
