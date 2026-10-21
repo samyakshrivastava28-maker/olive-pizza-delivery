@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signInWithCredential, signOut, sendEmailVerification, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
+import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signInWithCredential, signInWithCustomToken, signOut, sendEmailVerification, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 import { auth } from '../lib/firebase';
-import { getApiUrl } from '../lib/api';
+import { getApiUrl, getApiBaseUrl, PRODUCTION_BACKEND_URL } from '../lib/api';
 import { useDeliveryStore } from '../store/deliveryStore';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Mail, Truck, ShieldCheck, AlertTriangle, Phone, User, ArrowRight } from 'lucide-react';
@@ -229,6 +229,11 @@ export default function LoginPage() {
     setGoogleLoading(true);
     try {
       let result;
+      const isElectron = Boolean(
+        typeof window !== 'undefined' && 
+        ((window as any).electronAuth?.isDesktop || (window as any).electronAPI?.isElectron || (window as any).deliveryDesktop?.isDesktop)
+      );
+
       if (Capacitor.isNativePlatform()) {
         const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
         const nativeResult = await FirebaseAuthentication.signInWithGoogle();
@@ -238,6 +243,29 @@ export default function LoginPage() {
         } else {
           throw new Error('Google Sign-In failed on device.');
         }
+      } else if (isElectron && ((window as any).electronAuth?.startBrowserAuth || (window as any).deliveryDesktop?.startBrowserAuth)) {
+        toast.loading('Opening system browser to authenticate...', { id: 'browser-auth' });
+        const backendBase = getApiBaseUrl() || PRODUCTION_BACKEND_URL;
+        const authUrl = `${backendBase}/api/auth/desktop-login?app=DELIVERY`;
+        const authFn = (window as any).electronAuth?.startBrowserAuth || (window as any).deliveryDesktop?.startBrowserAuth;
+        const authResult = await authFn(authUrl);
+
+        if (!authResult || !authResult.success) {
+          toast.dismiss('browser-auth');
+          throw new Error(authResult?.error || 'Authentication via browser was cancelled or timed out.');
+        }
+
+        toast.loading('Finalizing delivery partner session...', { id: 'browser-auth' });
+        if (authResult.customToken) {
+          result = await signInWithCustomToken(auth, authResult.customToken);
+        } else if (authResult.idToken) {
+          const credential = GoogleAuthProvider.credential(authResult.idToken);
+          result = await signInWithCredential(auth, credential);
+        } else {
+          toast.dismiss('browser-auth');
+          throw new Error('No authentication credential received from browser callback.');
+        }
+        toast.dismiss('browser-auth');
       } else {
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: 'select_account' });
