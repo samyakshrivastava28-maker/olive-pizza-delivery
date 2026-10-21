@@ -192,12 +192,14 @@ public class RiderBackgroundTrackingPlugin: CAPPlugin, CAPBridgedPlugin, CLLocat
             return
         }
 
-        user.getIDTokenForcingRefresh(false) { token, error in
+        user.getIDTokenForcingRefresh(false) { [weak self] token, error in
+            guard let self = self else { return }
             guard let token = token, error == nil else {
                 NSLog("[RiderBackgroundTracking] Could not obtain a current auth token for location upload.")
                 return
             }
-            var request = URLRequest(url: URL(string: "\(backendBaseUrl)/api/delivery/rider/status")!)
+            guard let url = URL(string: "\(self.backendBaseUrl)/api/delivery/rider/status") else { return }
+            var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.timeoutInterval = 10
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
