@@ -202,10 +202,24 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
 
         if (resp.ok && authData?.authorized) {
           const u = authData.user || {};
-          let resolvedBranchId = u.branchId || 'main_branch';
-          if (resolvedBranchId === 'fra_primary' || !resolvedBranchId) resolvedBranchId = 'main_branch';
-          let resolvedFranchiseId = u.franchiseId || 'fra_rajnandgaon';
-          if (resolvedFranchiseId === 'fra_primary' || !resolvedFranchiseId) resolvedFranchiseId = 'fra_rajnandgaon';
+          const resolvedBranchId = u.branchId;
+          const resolvedFranchiseId = u.franchiseId;
+
+          if (!resolvedBranchId || !resolvedFranchiseId) {
+            console.warn('[DeliveryStore] Rider account lacks active branch/franchise scope from backend:', u);
+            set({
+              user: firebaseUser,
+              riderProfile: null,
+              userRole: null,
+              isAuthChecking: false,
+              isAuthorized: false,
+              authStatus: 'ACCOUNT_REJECTED',
+              restrictedReason: 'Rider account is not assigned to an active branch or franchise. Please contact store owner in Owner Control Center.',
+              restrictedEmail: emailLower,
+              activeOrders: []
+            });
+            return;
+          }
 
           const profile: RiderProfile = {
             uid: firebaseUser.uid,
@@ -245,8 +259,8 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
           get().subscribeToActiveOrders(firebaseUser.uid);
           get().fetchTodayStats();
           get().fetchMonthlyReports();
-        } else {
-          // Explicitly unauthorized or pending account
+        } else if (resp.status === 403 || authData?.code === 'ACCOUNT_REJECTED' || authData?.code === 'ACCOUNT_INACTIVE' || authData?.code === 'PENDING_OWNER_APPROVAL' || authData?.code === 'NOT_REGISTERED') {
+          // Explicitly unauthorized or pending account by backend
           const denialReason = authData?.reason || 'Access Denied: This account is not authorized to use the Delivery application.';
           const code = authData?.code || 'UNAUTHORIZED';
           console.warn('[DeliveryStore] Access restricted for account:', emailLower, code, denialReason);
@@ -267,6 +281,20 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
             isAuthorized: false,
             authStatus: isPending ? 'PENDING_OWNER_APPROVAL' : code === 'ACCOUNT_REJECTED' ? 'ACCOUNT_REJECTED' : code === 'ACCOUNT_INACTIVE' ? 'ACCOUNT_DEACTIVATED' : null,
             restrictedReason: denialReason,
+            restrictedEmail: emailLower,
+            activeOrders: []
+          });
+        } else {
+          // Server 5xx cold start, network glitch or timeout — DO NOT destroy session
+          console.warn('[DeliveryStore] Transient connectivity issue during rider auth check:', resp.status, authData);
+          set({
+            user: firebaseUser,
+            riderProfile: null,
+            userRole: null,
+            isAuthChecking: false,
+            isAuthorized: false,
+            authStatus: null,
+            restrictedReason: 'Unable to reach delivery server (waking up). Please retry in a few moments.',
             restrictedEmail: emailLower,
             activeOrders: []
           });
