@@ -117,6 +117,8 @@ jobs:
             echo "ℹ️ Release signing secrets unconfigured. Preparing deterministic Olive Pizza CI release keystore."
             if [ -f "android/app/ci-release.keystore" ]; then
               cp -f "android/app/ci-release.keystore" "$KEYSTORE_PATH"
+            else
+              keytool -genkeypair -v -keystore "$KEYSTORE_PATH" -alias olivepizza -keyalg RSA -keysize 2048 -validity 10000 -storepass olivepizza -keypass olivepizza -dname "CN=OlivePizza, OU=Engineering, O=OlivePizza, L=Rajnandgaon, ST=Chhattisgarh, C=IN"
             fi
             echo "RELEASE_SIGNING=ci-deterministic" >> $GITHUB_ENV
             echo "KEYSTORE_PASS=olivepizza" >> $GITHUB_ENV
