@@ -12,7 +12,7 @@ import {
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { fetchApi, getApiUrl, invalidateRiderOrdersCache } from '../lib/api';
-import { supabase } from '../lib/supabase';
+// Supabase eradicated in Phase 4
 import { offlineGpsBuffer } from '../lib/offlineGpsBuffer';
 import { SoundAlertEngine } from '../lib/SoundAlertEngine';
 import { deviceAlarmService } from '../services/DeviceAlarmService';
@@ -357,11 +357,12 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
       locationService.stopTracking();
       set({ isOnline: false, isGpsLocked: false, isGpsActive: false, gpsStatus: 'OFFLINE' });
       const uid = get().user?.uid;
-      if (supabase && uid) {
-        try {
-          supabase.from('delivery_locations').update({ online_status: false, last_updated: new Date().toISOString() }).eq('delivery_partner_id', uid).then();
-        } catch {}
-      }
+      // Immediately notify backend to purge Redis presence
+      fetchApi('/api/v1/tracking/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: false })
+      }).catch(() => {});
       try {
         await fetchApi('/api/delivery/rider/status', {
           method: 'POST',
