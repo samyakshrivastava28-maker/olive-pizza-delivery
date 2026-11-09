@@ -858,10 +858,17 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
   },
 
   collectCodCash: async (orderId: string, notes?: string) => {
+    const loc = get().currentLocation;
     try {
       const res = await fetchApi('/api/payments/cod/cash-collect', {
         method: 'POST',
-        body: JSON.stringify({ orderId, notes }),
+        body: JSON.stringify({
+          orderId,
+          notes,
+          riderLat: loc?.lat,
+          riderLng: loc?.lng,
+          clientCoordinates: loc ? { lat: loc.lat, lng: loc.lng } : undefined
+        }),
       });
       if (res.success) {
         set((state) => ({
