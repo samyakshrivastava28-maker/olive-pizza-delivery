@@ -519,6 +519,79 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     }
 
     set({ isOrdersLoading: true });
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let isDisposed = false;
+    let snapshotMap = new Map<string, DeliveryOrder>();
+    let apiMap = new Map<string, DeliveryOrder>();
+
+    const isSyntheticDeliveryOrder = (id: string, d: any) => (
+      id.startsWith('test_') ||
+      id.startsWith('mock_') ||
+      id.startsWith('synthetic_') ||
+      id.startsWith('dummy_') ||
+      id.startsWith('online_test_') ||
+      id.startsWith('ord_test_') ||
+      (d?.customerName && /^(test|mock|synthetic|dummy|fake|archival test|idempotency test)/i.test(d.customerName)) ||
+      (d?.orderNumber && /test/i.test(String(d.orderNumber))) ||
+      d?.isTest === true
+    );
+
+    const applyAlarmAndSet = (list: DeliveryOrder[]) => {
+      if (isDisposed) return;
+      const now = Date.now();
+      const hasUnaccepted = list.some((o) => {
+        if (o.status !== 'partner_assigned') return false;
+        const assignedTime = (o as any).assignedAt || (o as any).partnerAssignedAt || o.updatedAt || o.createdAt;
+        const timeMs = assignedTime ? new Date(assignedTime).getTime() : 0;
+        return timeMs > 0 && (now - timeMs < 20 * 60 * 1000);
+      });
+      const isOnline = get().isOnline;
+      const isAlarmEnabled = deviceAlarmService.isAlarmEnabled();
+
+      if (hasUnaccepted && isOnline && isAlarmEnabled) {
+        SoundAlertEngine.startContinuousAlarm();
+      } else {
+        SoundAlertEngine.stopAlarm();
+      }
+
+      set({ activeOrders: list, isOrdersLoading: false });
+    };
+
+    const flushMergedOrders = () => {
+      const merged = new Map<string, DeliveryOrder>();
+      for (const [id, o] of snapshotMap.entries()) {
+        merged.set(id, o);
+      }
+      for (const [id, o] of apiMap.entries()) {
+        const existing = merged.get(id);
+        merged.set(id, existing ? { ...existing, ...o } : o);
+      }
+      applyAlarmAndSet(Array.from(merged.values()));
+    };
+
+    const syncFromApi = async () => {
+      if (isDisposed) return;
+      try {
+        const res = await fetchApi('/api/delivery/rider/active-orders');
+        if (res && res.success && Array.isArray(res.orders)) {
+          const nextApiMap = new Map<string, DeliveryOrder>();
+          for (const raw of res.orders) {
+            const oid = raw?.id || raw?.orderId;
+            if (!oid || isSyntheticDeliveryOrder(oid, raw)) continue;
+            nextApiMap.set(oid, { ...raw, id: oid } as DeliveryOrder);
+          }
+          apiMap = nextApiMap;
+          flushMergedOrders();
+        } else if (!isDisposed) {
+          set({ isOrdersLoading: false });
+        }
+      } catch {
+        if (!isDisposed) set({ isOrdersLoading: false });
+      }
+    };
+
+    syncFromApi();
+    pollTimer = setInterval(syncFromApi, 5000);
 
     try {
       const activeStatuses = ['partner_assigned', 'accepted', 'ready', 'preparing', 'picked_up', 'out_for_delivery'];
@@ -529,59 +602,31 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
       );
 
       activeOrdersUnsub = onSnapshot(q, (snapshot) => {
-        const list: DeliveryOrder[] = [];
+        const nextSnapMap = new Map<string, DeliveryOrder>();
         snapshot.forEach((docSnap) => {
           const d = docSnap.data();
-
-          // ── SYNTHETIC / TEST ORDER SAFEGUARD ──────────────────────────────────
-          // Never dispatch tasks or sound alarms for riders on test/mock/synthetic orders
-          const isSynthetic = 
-            docSnap.id.startsWith('test_') ||
-            docSnap.id.startsWith('mock_') ||
-            docSnap.id.startsWith('synthetic_') ||
-            docSnap.id.startsWith('dummy_') ||
-            docSnap.id.startsWith('online_test_') ||
-            docSnap.id.startsWith('ord_test_') ||
-            (d.customerName && /^(test|mock|synthetic|dummy|fake|archival test|idempotency test)/i.test(d.customerName)) ||
-            (d.orderNumber && /test/i.test(String(d.orderNumber))) ||
-            d.isTest === true;
-
-          if (isSynthetic) return;
-
-          list.push({
+          if (isSyntheticDeliveryOrder(docSnap.id, d)) return;
+          nextSnapMap.set(docSnap.id, {
             id: docSnap.id,
             ...d
           } as DeliveryOrder);
         });
-
-        // Trigger continuous alarm only for fresh assignments (< 20 mins)
-        const now = Date.now();
-        const hasUnaccepted = list.some((o) => {
-          if (o.status !== 'partner_assigned') return false;
-          const assignedTime = (o as any).assignedAt || (o as any).partnerAssignedAt || o.updatedAt || o.createdAt;
-          const timeMs = assignedTime ? new Date(assignedTime).getTime() : 0;
-          return timeMs > 0 && (now - timeMs < 20 * 60 * 1000);
-        });
-        const isOnline = get().isOnline;
-        const isAlarmEnabled = deviceAlarmService.isAlarmEnabled();
-
-        // Guarantees alarm NEVER sounds when rider is offline or device alarm is OFF
-        if (hasUnaccepted && isOnline && isAlarmEnabled) {
-          SoundAlertEngine.startContinuousAlarm();
-        } else {
-          SoundAlertEngine.stopAlarm();
-        }
-
-        set({ activeOrders: list, isOrdersLoading: false });
+        snapshotMap = nextSnapMap;
+        flushMergedOrders();
       }, (error) => {
         console.warn('Active orders subscription notice:', error);
-        get().fetchActiveOrders();
+        syncFromApi();
       });
     } catch (e) {
-      get().fetchActiveOrders();
+      syncFromApi();
     }
 
     return () => {
+      isDisposed = true;
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
       SoundAlertEngine.stopAlarm();
       if (activeOrdersUnsub) {
         activeOrdersUnsub();
