@@ -13,7 +13,7 @@ import DeliveryPushNotificationManager from './services/DeliveryPushNotification
 import { useDeliveryStore } from './store/deliveryStore';
 
 export default function App() {
-  const { initAuth, isAuthChecking, restrictedReason } = useDeliveryStore();
+  const { initAuth, isAuthChecking } = useDeliveryStore();
 
   useEffect(() => {
     const unsub = initAuth();
@@ -28,14 +28,6 @@ export default function App() {
           <p className="text-xs text-slate-400 font-medium">Verifying Delivery Partner Session...</p>
         </div>
       </div>
-    );
-  }
-
-  if (restrictedReason) {
-    return (
-      <BrowserRouter>
-        <AccessDeniedPage />
-      </BrowserRouter>
     );
   }
 
