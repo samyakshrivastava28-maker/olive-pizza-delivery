@@ -114,7 +114,12 @@ export default function LoginPage() {
       setMaskedEmail(resp.maskedEmail || resp.email || cleanInput);
       setResolvedName(resp.name || 'Delivery Partner');
       setResendCooldown(60);
-      setCode(['', '', '', '', '', '']);
+      if (resp.demoCode && typeof resp.demoCode === 'string' && resp.demoCode.length === 6) {
+        setCode(resp.demoCode.split(''));
+        toast(`Development Test Code: ${resp.demoCode}`, { icon: '🔑' });
+      } else {
+        setCode(['', '', '', '', '', '']);
+      }
       setStep('verify');
       toast.success(resp.message || 'Verification code sent to your email!');
 
