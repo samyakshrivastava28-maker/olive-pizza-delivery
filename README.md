@@ -1,4 +1,4 @@
-# 🛵 Olive Pizza Delivery Raider (v2.2.0)
+# 🛵 Olive Pizza Delivery Raider (v2.3.0)
 
 [![React](https://img.shields.io/badge/React-19.0-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-6.0-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
@@ -18,7 +18,7 @@ Delivery fleet application for Olive Pizza drivers and riders.
 
 ---
 
-## 📦 Latest Release Downloads (v2.2.0)
+## 📦 Latest Release Downloads (v2.3.0)
 
 Staged in `C:\Users\RYZEN\Downloads\OlivePizza_Release_Binaries`:
 - **Android APK**: `OlivePizza_Delivery_v2.2.0_Release.apk` (9.82 MB)
