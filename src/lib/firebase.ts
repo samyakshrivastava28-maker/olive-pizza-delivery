@@ -67,3 +67,8 @@ export const getCurrentAuthToken = async (): Promise<string> => {
     });
   });
 };
+
+if (typeof window !== 'undefined') {
+  (window as any).__firebaseAuth = auth;
+  (window as any).__signInWithCustomToken = signInWithCustomToken;
+}

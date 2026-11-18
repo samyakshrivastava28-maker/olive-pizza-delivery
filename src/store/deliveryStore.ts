@@ -1001,3 +1001,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     }));
   }
 }));
+
+if (typeof window !== 'undefined') {
+  (window as any).__deliveryStore = useDeliveryStore;
+}

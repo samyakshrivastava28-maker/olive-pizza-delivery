@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDeliveryStore } from '../store/deliveryStore';
-import { db } from '../lib/firebase';
+import { db, app } from '../lib/firebase';
 import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { fetchApi } from '../lib/api';
 import { NotificationPermissionManager } from '../lib/NotificationPermissionManager';
@@ -174,7 +174,6 @@ export default function DeliveryPushNotificationManager() {
       if ('serviceWorker' in navigator && 'Notification' in window && Notification.permission === 'granted') {
         const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js').catch(() => null);
         const { getMessaging, getToken, isSupported } = await import('firebase/messaging');
-        const { app } = await import('../lib/firebase');
         const supported = await isSupported().catch(() => false);
         if (supported) {
           const messaging = getMessaging(app);

@@ -1,16 +1,23 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { DeliveryLayout } from './components/layout/DeliveryLayout';
 import DashboardPage from './pages/DashboardPage';
-import LiveOrdersPage from './pages/LiveOrdersPage';
-import DeliveryHistoryPage from './pages/DeliveryHistoryPage';
-import AccountPage from './pages/AccountPage';
-import SettingsPage from './pages/SettingsPage';
 import LoginPage from './pages/LoginPage';
-import AccessDeniedPage from './pages/AccessDeniedPage';
 import DeliveryPushNotificationManager from './services/DeliveryPushNotificationManager';
 import { useDeliveryStore } from './store/deliveryStore';
+
+const LiveOrdersPage = lazy(() => import('./pages/LiveOrdersPage'));
+const DeliveryHistoryPage = lazy(() => import('./pages/DeliveryHistoryPage'));
+const AccountPage = lazy(() => import('./pages/AccountPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const AccessDeniedPage = lazy(() => import('./pages/AccessDeniedPage'));
+
+const PageLoader = () => (
+  <div className="flex h-64 w-full items-center justify-center">
+    <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+  </div>
+);
 
 export default function App() {
   const { initAuth, isAuthChecking } = useDeliveryStore();
@@ -46,21 +53,23 @@ export default function App() {
           }
         }}
       />
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/access-denied" element={<AccessDeniedPage />} />
-        
-        <Route element={<DeliveryLayout />}>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/live-orders" element={<LiveOrdersPage />} />
-          <Route path="/history" element={<DeliveryHistoryPage />} />
-          <Route path="/account" element={<AccountPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-        </Route>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/access-denied" element={<AccessDeniedPage />} />
+          
+          <Route element={<DeliveryLayout />}>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/live-orders" element={<LiveOrdersPage />} />
+            <Route path="/history" element={<DeliveryHistoryPage />} />
+            <Route path="/account" element={<AccountPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Route>
 
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

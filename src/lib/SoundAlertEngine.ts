@@ -11,6 +11,8 @@ export type SoundType =
   | 'order_accepted'   // Confirmation chime
   | 'order_ready'      // Pickup bell
   | 'order_delivered'  // Delivery celebration chime
+  | 'prep_timer_ended' // Kitchen timer finished chime
+  | 'status_changed'   // Order status progression chime
   | 'soft_pop'         // Update tone
   | 'test';            // Test tone
 
@@ -180,12 +182,14 @@ export class SoundAlertEngine {
     const selectedOption = ALERT_SOUND_OPTIONS.find((o) => o.id === settings.selectedSoundId) || ALERT_SOUND_OPTIONS[0];
 
     const soundFilesMap: Record<SoundType, string[]> = {
-      delivery_urgent: [selectedOption.file, '/sounds/delivery_chime.mp3', '/sounds/system_alert.mp3'],
-      order_accepted: ['/sounds/order_confirmed.mp3', '/sounds/success_ding.mp3'],
-      order_ready: ['/sounds/success_ding.mp3', '/sounds/delivery_chime.mp3'],
-      order_delivered: ['/sounds/order_delivered.mp3', '/sounds/delivery_completed.mp3'],
-      soft_pop: ['/sounds/soft_pop.mp3'],
-      test: [selectedOption.file, '/sounds/delivery_chime.mp3', '/sounds/success_ding.mp3'],
+      delivery_urgent: [selectedOption.file, '/sounds/delivery_chime.wav', '/sounds/delivery_chime.mp3', '/sounds/system_alert.mp3'],
+      order_accepted: ['/sounds/order_confirmed.wav', '/sounds/order_confirmed.mp3', '/sounds/success_ding.wav'],
+      order_ready: ['/sounds/success_ding.wav', '/sounds/success_ding.mp3', '/sounds/delivery_chime.wav'],
+      order_delivered: ['/sounds/order_delivered.wav', '/sounds/order_delivered.mp3', '/sounds/delivery_completed.mp3'],
+      prep_timer_ended: ['/sounds/prep_timer_ended.wav', '/sounds/prep_timer_ended.mp3', '/sounds/success_ding.wav'],
+      status_changed: ['/sounds/status_changed.wav', '/sounds/status_changed.mp3', '/sounds/delivery_chime.wav'],
+      soft_pop: ['/sounds/soft_pop.wav', '/sounds/soft_pop.mp3'],
+      test: [selectedOption.file, '/sounds/delivery_chime.wav', '/sounds/delivery_chime.mp3', '/sounds/success_ding.wav'],
     };
 
     const files = soundFilesMap[type] || [];
@@ -224,6 +228,15 @@ export class SoundAlertEngine {
         this.playTone(784, 0.15, 'sine', 0.6, 0);
         this.playTone(987, 0.15, 'sine', 0.6, 0.12);
         this.playTone(1174, 0.3, 'sine', 0.7, 0.24);
+        break;
+      case 'prep_timer_ended':
+        this.playTone(659, 0.2, 'sine', 0.8, 0);
+        this.playTone(830, 0.2, 'sine', 0.85, 0.12);
+        this.playTone(987, 0.4, 'sine', 0.95, 0.24);
+        break;
+      case 'status_changed':
+        this.playTone(1046, 0.15, 'sine', 0.7, 0);
+        this.playTone(1318, 0.25, 'sine', 0.75, 0.1);
         break;
       case 'soft_pop':
         this.playTone(880, 0.1, 'sine', 0.3, 0);

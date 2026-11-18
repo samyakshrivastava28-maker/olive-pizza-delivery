@@ -1,9 +1,9 @@
 ﻿import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 
 export async function requestPostLoginNotificationPermissions(): Promise<boolean> {
   try {
     if (Capacitor.isNativePlatform()) {
-      const { PushNotifications } = await import('@capacitor/push-notifications');
       let permStatus = await PushNotifications.checkPermissions();
       if (permStatus.receive === 'prompt' || permStatus.receive === 'prompt-with-rationale') {
         permStatus = await PushNotifications.requestPermissions();

@@ -19,6 +19,7 @@ import {
   ALERT_SOUND_OPTIONS, 
   DEFAULT_ALERT_SOUND_ID 
 } from '../lib/SoundAlertEngine';
+import toast from 'react-hot-toast';
 
 interface SoundSettingsModalProps {
   isOpen: boolean;
@@ -213,16 +214,57 @@ export const SoundSettingsModal: React.FC<SoundSettingsModalProps> = ({ isOpen, 
             </button>
           </div>
 
-          {/* Test Sound Button */}
-          <div className="pt-2 border-t border-slate-800 flex gap-2">
-            <button
-              onClick={handleTestSound}
-              disabled={isPlayingTest}
-              className="flex-1 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-white flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-60"
-            >
-              <Play className={`w-3.5 h-3.5 text-amber-400 ${isPlayingTest ? 'animate-spin' : ''}`} />
-              <span>{isPlayingTest ? 'Testing...' : 'Test Dispatch Sound'}</span>
-            </button>
+          {/* Test Sound Buttons */}
+          <div className="pt-2 border-t border-slate-800 space-y-2">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">
+              Audio Diagnostics & Custom Sound Audition
+            </span>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={handleTestSound}
+                disabled={isPlayingTest}
+                className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-white flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-60"
+              >
+                <Play className={`w-3.5 h-3.5 text-amber-400 ${isPlayingTest ? 'animate-spin' : ''}`} />
+                <span>{isPlayingTest ? 'Testing...' : 'Test Dispatch'}</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  SoundAlertEngine.unlockAudio();
+                  SoundAlertEngine.playSound('order_delivered');
+                  toast.success('Auditioning Delivered Fanfare 🎉');
+                }}
+                className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-white flex items-center justify-center gap-1.5 transition cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Test Delivered</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  SoundAlertEngine.unlockAudio();
+                  SoundAlertEngine.playSound('prep_timer_ended');
+                  toast.success('Auditioning Prep Timer Finish Bell 🔔');
+                }}
+                className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-white flex items-center justify-center gap-1.5 transition cursor-pointer"
+              >
+                <Bell className="w-3.5 h-3.5 text-amber-300" />
+                <span>Test Timer End</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  SoundAlertEngine.unlockAudio();
+                  SoundAlertEngine.playSound('status_changed');
+                  toast.success('Auditioning Status Update Chime ✨');
+                }}
+                className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-white flex items-center justify-center gap-1.5 transition cursor-pointer"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Test Status Ding</span>
+              </button>
+            </div>
           </div>
         </div>
 
