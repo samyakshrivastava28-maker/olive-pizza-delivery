@@ -358,10 +358,10 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
       set({ isOnline: false, isGpsLocked: false, isGpsActive: false, gpsStatus: 'OFFLINE' });
       const uid = get().user?.uid;
       // Immediately notify backend to purge Redis presence
-      fetchApi('/api/v1/tracking/status', {
+      fetchApi('/api/tracking/status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: false })
+        body: JSON.stringify({ partnerId: uid, status: false })
       }).catch(() => {});
       try {
         await fetchApi('/api/delivery/rider/status', {

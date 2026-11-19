@@ -51,7 +51,7 @@ public class RiderBackgroundTrackingService extends Service implements LocationL
     private static final String PREFS = "olive_rider_tracking";
     private static final String PREF_UID = "uid";
     private static final String PREF_BASE_URL = "apiBaseUrl";
-    private static final String DEFAULT_BASE_URL = "https://olivepizza-owner.onrender.com";
+    private static final String DEFAULT_BASE_URL = "https://olive-pizza-backend.onrender.com";
     private static final String TAG = "RiderBackgroundTracking";
     private static final String CHANNEL_ID = "olive_rider_background_location";
     private static final int NOTIFICATION_ID = 732041;

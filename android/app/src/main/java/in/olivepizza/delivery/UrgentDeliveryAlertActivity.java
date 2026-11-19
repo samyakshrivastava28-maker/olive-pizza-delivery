@@ -51,7 +51,7 @@ public class UrgentDeliveryAlertActivity extends AppCompatActivity {
                 if (val != null && !val.isEmpty()) return val + "/api/notifications/action";
             }
         } catch (Exception ignored) {}
-        return "https://olivepizza-owner.onrender.com/api/notifications/action";
+        return "https://olive-pizza-backend.onrender.com/api/notifications/action";
     }
 
     private String orderId;

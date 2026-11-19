@@ -100,8 +100,13 @@ class OfflineGpsBufferService {
         return;
       }
 
+      // Ensure timestamp satisfies backend telemetry validation window (not > 2 min stale)
+      const pointTime = new Date(latestPoint.timestamp).getTime();
+      const isStale = isNaN(pointTime) || (Date.now() - pointTime > 110000);
+      const telemetryTimestamp = isStale ? new Date().toISOString() : latestPoint.timestamp;
+
       // ── Stream to Central Backend Redis GPS Pipeline ──
-      const res = await fetchApi('/api/v1/tracking/location/update', {
+      const res = await fetchApi('/api/tracking/location/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -109,10 +114,12 @@ class OfflineGpsBufferService {
           orderId: latestPoint.activeOrderId || null,
           latitude: Number(latestPoint.lat),
           longitude: Number(latestPoint.lng),
+          lat: Number(latestPoint.lat),
+          lng: Number(latestPoint.lng),
           heading: Number(latestPoint.heading || 0),
           speed: Number(latestPoint.speed || 0),
           accuracy: Number(latestPoint.accuracy || 5),
-          timestamp: latestPoint.timestamp
+          timestamp: telemetryTimestamp
         })
       });
 

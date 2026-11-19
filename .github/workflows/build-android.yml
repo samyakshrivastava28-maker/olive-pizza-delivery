@@ -40,8 +40,8 @@ jobs:
           npm ci --legacy-peer-deps
           npm run build
         env:
-          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL || 'https://olivepizza-owner.onrender.com' }}
-          VITE_BACKEND_URL: ${{ secrets.VITE_BACKEND_URL || 'https://olivepizza-owner.onrender.com' }}
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL || 'https://olive-pizza-backend.onrender.com' }}
+          VITE_BACKEND_URL: ${{ secrets.VITE_BACKEND_URL || 'https://olive-pizza-backend.onrender.com' }}
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_PROJECT_ID: olive-pizza-08
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
@@ -205,7 +205,7 @@ jobs:
           echo "- **APK File:** \`olivepizza-delivery-${COMMIT_NUM}.apk\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Signing Mode:** \`${{ env.RELEASE_SIGNING }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Package ID:** \`in.olivepizza.delivery\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Backend Endpoint:** https://olivepizza-owner.onrender.com" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Backend Endpoint:** https://olive-pizza-backend.onrender.com" >> "$GITHUB_STEP_SUMMARY"
 
       # 17. Cleanup Keystore (Fail-Closed Sandbox Hygiene)
       - name: Cleanup Keystore

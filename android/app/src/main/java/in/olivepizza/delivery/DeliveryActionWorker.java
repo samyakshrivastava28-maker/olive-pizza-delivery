@@ -45,7 +45,7 @@ public class DeliveryActionWorker extends Worker {
                 if (val != null && !val.isEmpty()) return val;
             }
         } catch (Exception ignored) {}
-        return "https://olivepizza-owner.onrender.com";
+        return "https://olive-pizza-backend.onrender.com";
     }
 
     public static final String KEY_ORDER_ID = "orderId";

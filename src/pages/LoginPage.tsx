@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDeliveryStore } from '../store/deliveryStore';
 import { auth } from '../lib/firebase';
-import { signInWithCustomToken } from 'firebase/auth';
+import { signInWithCustomToken, signOut } from 'firebase/auth';
 import { getApiUrl } from '../lib/api';
 import { 
   Bike, 
@@ -250,6 +250,25 @@ export default function LoginPage() {
       const user = userCredential.user;
       const u = resp.user || {};
 
+      // Fail-closed authorization: rider account MUST have active PostgreSQL branch and franchise assignment
+      if (!u.branchId || !u.franchiseId) {
+        console.warn('[DeliveryLoginPage] Rider account lacks active branch/franchise scope from backend:', u);
+        await signOut(auth).catch(() => {});
+        useDeliveryStore.setState({
+          user: null,
+          riderProfile: null,
+          userRole: null,
+          isAuthorized: false,
+          isAuthChecking: false,
+          authStatus: 'ACCOUNT_REJECTED',
+          restrictedReason: 'Rider account is not assigned to an active branch or franchise. Please contact store owner in Owner Control Center.',
+          restrictedEmail: verifiedEmail
+        });
+        setError('Rider account is not assigned to an active branch or franchise. Please contact store owner in Owner Control Center.');
+        setIsLoading(false);
+        return;
+      }
+
       useDeliveryStore.setState({
         user,
         riderProfile: {
@@ -259,16 +278,17 @@ export default function LoginPage() {
           email: user.email || verifiedEmail,
           phone: u.phone || '',
           role: u.role || 'delivery_partner',
-          branchId: u.branchId || 'branch_rjn_main',
-          branchName: u.branchName || 'Olive Pizza — Rajnandgaon HQ',
-          franchiseId: u.franchiseId || 'fra_rajnandgaon',
-          organizationId: 'org_olive_pizza_hq',
+          branchId: u.branchId,
+          branchName: u.branchName || 'Assigned Branch',
+          franchiseId: u.franchiseId,
+          organizationId: u.organizationId || 'org_olive_pizza_hq',
           isOnline: true,
           workingSchedule: u.workingSchedule || []
         },
         userRole: u.role || 'delivery_partner',
         isAuthorized: true,
         isAuthChecking: false,
+        authStatus: 'APPROVED',
         isOnline: true,
         restrictedReason: null,
         restrictedEmail: null

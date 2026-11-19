@@ -7,7 +7,7 @@ import FirebaseAuth
 class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
 
     var window: UIWindow?
-    private let backendBaseUrl = "https://olivepizza-owner.onrender.com"
+    private let backendBaseUrl = "https://olive-pizza-backend.onrender.com"
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         UNUserNotificationCenter.current().delegate = self

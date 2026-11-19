@@ -16,7 +16,7 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-const API_BASE = 'https://olivepizza-owner.onrender.com/api';
+const API_BASE = 'https://olive-pizza-backend.onrender.com/api';
 const BROADCAST = new BroadcastChannel('olive_pizza_notifications');
 const ICON = 'https://res.cloudinary.com/dxmlvkff1/image/upload/v1782376898/olive-pizza/brand/logo.png';
 const BADGE = 'https://res.cloudinary.com/dxmlvkff1/image/upload/v1782376898/olive-pizza/brand/badge_mono.png';

@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit;
 /** Authenticated, native actions for weekly shift-end alerts. */
 public class ShiftNotificationActionReceiver extends BroadcastReceiver {
     private static final String TAG = "ShiftNotificationAction";
-    private static final String CONTINUE_URL = "https://olivepizza-owner.onrender.com/api/delivery/rider/schedule/continue";
+    private static final String CONTINUE_URL = "https://olive-pizza-backend.onrender.com/api/delivery/rider/schedule/continue";
     private static final ExecutorService IO = Executors.newCachedThreadPool();
 
     @Override
